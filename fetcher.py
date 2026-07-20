@@ -1,4 +1,4 @@
-"""Pulls quotes from Yahoo Finance and investing.com and shapes them for the template."""
+"""Pulls quotes from Yahoo Finance, ZKB and investing.com and shapes them for the template."""
 
 from datetime import datetime, timezone
 
@@ -7,17 +7,16 @@ import yfinance as yf
 
 import config
 import investing
+import zkb
 
 
 def _yahoo_tickers():
-    tickers = []
-    for instruments in config.ASSET_CLASSES.values():
-        for inst in instruments:
-            if inst.get("source", "yahoo") == "yahoo" and inst.get("ticker"):
-                tickers.append(inst["ticker"])
-            if inst.get("ytd_ticker"):
-                tickers.append(inst["ytd_ticker"])
-    return tickers
+    return [
+        inst["ticker"]
+        for instruments in config.ASSET_CLASSES.values()
+        for inst in instruments
+        if inst.get("source", "yahoo") == "yahoo" and inst.get("ticker")
+    ]
 
 
 def _closes_for(data: pd.DataFrame, ticker: str, multi: bool) -> pd.Series:
@@ -64,16 +63,6 @@ def _empty_row(inst) -> dict:
     }
 
 
-def _cash_ytd_change(data, multi, ticker, current_year):
-    """YTD change of a Yahoo cash series, used to override a future's YTD."""
-    closes = _closes_for(data, ticker, multi)
-    if len(closes) < 2:
-        return None
-    prior_year = closes[closes.index.year < current_year]
-    base = prior_year.iloc[-1] if len(prior_year) else closes.iloc[0]
-    return _fmt_change(closes.iloc[-1], base, is_yield=False)
-
-
 def _yahoo_row(inst, data, multi, current_year) -> dict:
     row = _empty_row(inst)
     closes = _closes_for(data, inst["ticker"], multi) * inst.get("scale", 1)
@@ -90,7 +79,21 @@ def _yahoo_row(inst, data, multi, current_year) -> dict:
     return row
 
 
-def _investing_row(inst, ytd_override=None) -> dict:
+def _zkb_row(inst, swap_rates, swap_history) -> dict:
+    """A swap-rate row from the ZKB table + locally accumulated history."""
+    row = _empty_row(inst)
+    rate = (swap_rates or {}).get(inst["swap"])
+    if rate is None:
+        row["note"] = f"ZKB fetch failed ({inst['swap']})"
+        return row
+    bases = zkb.change_bases(swap_history or {}, inst["swap"])
+    row["value"] = _fmt_value(rate, is_yield=True)
+    row["chg_1d"] = _fmt_change(rate, bases["prev"], is_yield=True)
+    row["chg_ytd"] = _fmt_change(rate, bases["ytd_base"], is_yield=True)
+    return row
+
+
+def _investing_row(inst) -> dict:
     row = _empty_row(inst)
     try:
         q = investing.quote(inst["pair_id"])
@@ -144,32 +147,37 @@ def fetch_snapshot() -> dict:
     multi = isinstance(yahoo_data.columns, pd.MultiIndex)
     current_year = datetime.now().year
 
-    needs_cb = any(
-        inst.get("source") == "cbrate"
+    sources = {
+        inst.get("source", "yahoo")
         for instruments in config.ASSET_CLASSES.values()
         for inst in instruments
-    )
+    }
     cb_rates = None
-    if needs_cb:
+    if "cbrate" in sources:
         try:
             cb_rates = investing.central_bank_rates()
         except Exception:
             cb_rates = None
+    swap_rates = None
+    swap_history = None
+    if "zkb" in sources:
+        try:
+            swap_rates = zkb.swap_rates()
+            swap_history = zkb.update_history(swap_rates)
+        except Exception:
+            swap_rates = None
 
     classes = {}
     for class_name, instruments in config.ASSET_CLASSES.items():
         rows = []
         for inst in instruments:
             source = inst.get("source", "yahoo")
-            if source == "investing":
-                ytd_override = None
-                if inst.get("ytd_ticker"):
-                    ytd_override = _cash_ytd_change(
-                        yahoo_data, multi, inst["ytd_ticker"], current_year
-                    )
-                rows.append(_investing_row(inst, ytd_override))
+            if source == "zkb":
+                rows.append(_zkb_row(inst, swap_rates, swap_history))
             elif source == "cbrate":
                 rows.append(_cbrate_row(inst, cb_rates))
+            elif source == "investing":
+                rows.append(_investing_row(inst))
             else:
                 rows.append(_yahoo_row(inst, yahoo_data, multi, current_year))
         classes[class_name] = rows

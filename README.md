@@ -1,14 +1,17 @@
 # Market Overview Dashboard
 
-A lightweight local dashboard that pulls market data from **Yahoo Finance**
-and **investing.com** every 15 minutes and displays it in the browser,
-segregated into asset classes:
+A lightweight local dashboard that pulls market data from **Yahoo Finance**,
+the **ZKB finance portal** and **investing.com** every 15 minutes and
+displays it in the browser, segregated into asset classes:
 
 | Asset class | Contents | Source |
 |---|---|---|
-| **Equity** | Front-month futures: S&P 500, Nasdaq 100, Euro Stoxx 50, DAX, SMI, FTSE 100, CAC 40, Nikkei 225, Hang Seng — YTD vs the cash index — plus VT (Vanguard Total World ETF, spot) | investing.com + Yahoo |
-| **Rates** | Central-bank policy rates (Fed, ECB, SNB) and interest rate swaps 1y / 3y / 5y / 10y in USD (`USDSB3L…=`), EUR (`EURIRS…=`), CHF (`CHFIRS…=`) | investing.com |
-| **Commodities** | Gold, Silver, WTI, Brent, Copper, Nat Gas, Platinum, Palladium | Yahoo Finance |
+| **Equity** | S&P 500, Nasdaq 100, Euro Stoxx 50, DAX, SMI, FTSE 100, CAC 40, Nikkei 225, Hang Seng, VT (Vanguard Total World ETF) | Yahoo Finance |
+| **Rates** | Central-bank policy rates (Fed, ECB, SNB) and interest rate swaps 2y / 3y / 5y / 10y in USD, EUR, CHF | investing.com (policy) + ZKB (swaps) |
+| **Precious Metals** | Gold, Silver, Palladium, Platinum | Yahoo Finance |
+| **Energy** | WTI, Brent, Nat Gas | Yahoo Finance |
+| **Industrial Metals** | Copper | Yahoo Finance |
+| **Crypto** | Bitcoin, Ether, Solana | Yahoo Finance |
 | **FX** | USD/CHF, EUR/CHF, EUR/USD | Yahoo Finance |
 | **Credit** | iTraxx Crossover, iTraxx Europe (Main), CDX HY, CDX IG (via ETF proxies, see caveats below) | Yahoo Finance |
 
@@ -54,23 +57,19 @@ instrument universe. Add or remove instruments by editing the
 
 ## Data caveats
 
-- **investing.com is unofficial:** there is no public API; the dashboard
-  uses the site's internal chart endpoint
-  (`api.investing.com/api/financialdata/{pair_id}/historical/chart/`) with
-  Chrome impersonation via `curl_cffi`. If investing.com changes its
-  endpoints or protection, `investing.py` may need adjusting.
-- **Stale swap feeds:** investing.com's EUR and CHF IRS series update
-  irregularly (at the time of writing they lag by ~2 weeks; USD swaps are
-  live). Rows whose last data point is older than `STALE_AFTER_DAYS`
-  (default 3) show an orange **"as of \<date\>"** marker instead of
-  pretending to be live.
-- **Futures vs cash:** equity Last/1d come from the continuous front-month
-  future; the YTD change is computed on the cash index (`ytd_ticker` in
-  `config.py`), because the continuous futures series crosses contract
-  rolls and would distort the YTD figure.
+- **Swap rates (ZKB):** parsed from the Swap-Sätze table on
+  [zkb-finance.mdgms.com](https://zkb-finance.mdgms.com/home/bonds/index.html)
+  — one fast request covers all currencies and maturities. The table starts
+  at 2 years (no 1y bucket) and only shows current values; the dashboard
+  therefore records them daily in `data/swap_history.json` and computes
+  1d / YTD changes from that accumulated history (1d appears from the
+  second day of running, YTD once history reaches back to a year-end).
 - **Policy rates** are scraped from
-  [investing.com/central-banks](https://www.investing.com/central-banks/);
-  the row note shows the last change and the next meeting date.
+  [investing.com/central-banks](https://www.investing.com/central-banks/)
+  (cached for 12h; the row note shows the last change and next meeting).
+  This is the only remaining investing.com dependency — the slow
+  per-instrument chart API (`investing.py`) is no longer used, but kept
+  in the repo in case single-instrument quotes are needed again.
 - **Credit:** Yahoo has **no CDS index spreads** (iTraxx / CDX on-the-run
   series). The dashboard currently shows liquid corporate-bond ETFs as
   clearly-labelled directional proxies (IHYG, IEAC, HYG, LQD). Replacing
@@ -81,8 +80,9 @@ instrument universe. Add or remove instruments by editing the
 ```
 market_dashboard/
 ├── app.py               # Flask server + 15-min background refresh loop
-├── fetcher.py           # orchestrates both sources + row formatting
-├── investing.py         # investing.com chart-API access (curl_cffi/Chrome)
+├── fetcher.py           # orchestrates all sources + row formatting
+├── zkb.py               # ZKB swap-rate table + local daily history
+├── investing.py         # investing.com access (only policy rates in use)
 ├── config.py            # refresh interval, port, instrument universe
 ├── templates/
 │   └── index.html       # dashboard page (dark theme, auto-reload)

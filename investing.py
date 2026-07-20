@@ -60,14 +60,22 @@ def _ytd_base(pair_id: int):
     return base
 
 
+# (fetched_time, data); policy rates change rarely -> refetch at most every 12h
+_cb_cache = None
+_CB_TTL_SECONDS = 12 * 3600
+
+
 def central_bank_rates() -> dict:
     """Scrapes https://www.investing.com/central-banks/ (rates change rarely,
-    so plain HTML scraping is fine here).
+    so plain HTML scraping with a 12h cache is fine here).
 
     Returns {"FED": {"rate": 3.75, "next": "Jul 29, 2026",
                      "last_change": "Dec 10, 2025 (-25bp)"}, ...}
     for every bank code found on the page.
     """
+    global _cb_cache
+    if _cb_cache and time.time() - _cb_cache[0] < _CB_TTL_SECONDS:
+        return _cb_cache[1]
     r = requests.get(
         "https://www.investing.com/central-banks/", impersonate="chrome", timeout=25
     )
@@ -84,6 +92,7 @@ def central_bank_rates() -> dict:
             "next": nxt.strip(),
             "last_change": last.strip(),
         }
+    _cb_cache = (time.time(), out)
     return out
 
 
