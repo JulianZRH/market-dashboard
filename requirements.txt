@@ -2,3 +2,4 @@ yfinance
 pandas
 flask
 curl_cffi
+pillow

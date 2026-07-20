@@ -93,7 +93,7 @@ ASSET_CLASSES = {
         {"name": "Ether",         "ticker": "ETH-USD", "ccy": "USD", "type": "price"},
         {"name": "Solana",        "ticker": "SOL-USD", "ccy": "USD", "type": "price"},
         {"name": "XRP",           "ticker": "XRP-USD", "ccy": "USD", "type": "price", "decimals": 4},
-        {"name": "UNUS SED LEO",  "ticker": "LEO-USD", "ccy": "USD", "type": "price"},
+        {"name": "LEO",           "ticker": "LEO-USD", "ccy": "USD", "type": "price"},
     ],
     "FX": [
         {"name": "USD/CHF", "ticker": "CHF=X",    "ccy": "CHF", "type": "price", "decimals": 4},
@@ -101,15 +101,13 @@ ASSET_CLASSES = {
         {"name": "EUR/USD", "ticker": "EURUSD=X", "ccy": "USD", "type": "price", "decimals": 4},
     ],
     "Credit": [
-        # Yahoo Finance has no CDS index (iTraxx / CDX on-the-run) spreads.
-        # Until a proper source is wired in, liquid ETFs serve as directional proxies.
-        {"name": "iTraxx Crossover", "ticker": "IHYG.L", "ccy": "EUR", "type": "price",
-         "note": "proxy: iShares EUR High Yield ETF (IHYG) - no CDS spreads on Yahoo"},
-        {"name": "iTraxx Europe (Main)", "ticker": "IEAC.L", "ccy": "EUR", "type": "price",
-         "note": "proxy: iShares EUR Corp Bond ETF (IEAC) - no CDS spreads on Yahoo"},
-        {"name": "CDX HY", "ticker": "HYG", "ccy": "USD", "type": "price",
-         "note": "proxy: iShares USD High Yield ETF (HYG) - no CDS spreads on Yahoo"},
-        {"name": "CDX IG", "ticker": "LQD", "ccy": "USD", "type": "price",
-         "note": "proxy: iShares USD IG Corp Bond ETF (LQD) - no CDS spreads on Yahoo"},
+        {"name": "IHYG", "ticker": "IHYG.L", "ccy": "EUR", "type": "price",
+         "note": "iShares EUR High Yield Corp Bond ETF"},
+        {"name": "IEAC", "ticker": "IEAC.L", "ccy": "EUR", "type": "price",
+         "note": "iShares EUR Corp Bond ETF"},
+        {"name": "HYG", "ticker": "HYG", "ccy": "USD", "type": "price",
+         "note": "iShares USD High Yield Corp Bond ETF"},
+        {"name": "LQD", "ticker": "LQD", "ccy": "USD", "type": "price",
+         "note": "iShares USD IG Corp Bond ETF"},
     ],
 }

@@ -1,8 +1,9 @@
 """Market Overview Dashboard.
 
-Serves http://localhost:8050 and refreshes Yahoo Finance data in a
-background thread every config.REFRESH_MINUTES minutes.
-Run via start_dashboard.bat (or: .venv\\Scripts\\python.exe app.py).
+Two modes, both refreshing every config.REFRESH_MINUTES minutes:
+  default      serves http://localhost:8050 (start_dashboard.bat)
+  --wallpaper  no browser/server - renders the dashboard straight onto
+               the Windows desktop background (start_wallpaper.bat)
 """
 
 import json
@@ -36,7 +37,16 @@ def _load_saved_snapshot():
         pass
 
 
-def _refresh_loop():
+def _apply_wallpaper():
+    import wallpaper
+    try:
+        wallpaper.update(_state["snapshot"])
+        print("[wallpaper] desktop background updated")
+    except Exception:
+        print(f"[wallpaper] FAILED:\n{traceback.format_exc(limit=1)}")
+
+
+def _refresh_loop(to_wallpaper=False):
     while True:
         try:
             _state["snapshot"] = fetcher.fetch_snapshot()
@@ -49,6 +59,8 @@ def _refresh_loop():
                 )
             except Exception:
                 pass
+            if to_wallpaper:
+                _apply_wallpaper()
         except Exception:
             _state["error"] = traceback.format_exc(limit=1)
             print(f"[refresh] FAILED:\n{_state['error']}")
@@ -72,16 +84,25 @@ def _port_in_use(port: int) -> bool:
 
 
 if __name__ == "__main__":
-    url = f"http://localhost:{config.PORT}"
-    open_browser = "--no-browser" not in sys.argv
-    if _port_in_use(config.PORT):
-        print(f"Dashboard already running - opening {url}")
-        if open_browser:
-            webbrowser.open(url)
-    else:
+    if "--wallpaper" in sys.argv:
+        # wallpaper mode: no server, no browser - just refresh + repaint
+        print("Market Overview in wallpaper mode "
+              f"(desktop background, refresh every {config.REFRESH_MINUTES} min)")
         _load_saved_snapshot()
-        threading.Thread(target=_refresh_loop, daemon=True).start()
-        if open_browser:
-            threading.Timer(1.5, lambda: webbrowser.open(url)).start()
-        print(f"Serving Market Overview Dashboard at {url}")
-        app.run(host="127.0.0.1", port=config.PORT)
+        if _state["snapshot"]:
+            _apply_wallpaper()
+        _refresh_loop(to_wallpaper=True)
+    else:
+        url = f"http://localhost:{config.PORT}"
+        open_browser = "--no-browser" not in sys.argv
+        if _port_in_use(config.PORT):
+            print(f"Dashboard already running - opening {url}")
+            if open_browser:
+                webbrowser.open(url)
+        else:
+            _load_saved_snapshot()
+            threading.Thread(target=_refresh_loop, daemon=True).start()
+            if open_browser:
+                threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+            print(f"Serving Market Overview Dashboard at {url}")
+            app.run(host="127.0.0.1", port=config.PORT)

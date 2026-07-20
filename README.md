@@ -13,7 +13,7 @@ displays it in the browser, segregated into asset classes:
 | **Industrial Metals** | Copper, Aluminium, Nickel, Zinc, Lead (LME cash, USD/t) | westmetall.com |
 | **Crypto** | Bitcoin, Ether, Solana, XRP, UNUS SED LEO | Yahoo Finance |
 | **FX** | USD/CHF, EUR/CHF, EUR/USD | Yahoo Finance |
-| **Credit** | iTraxx Crossover, iTraxx Europe (Main), CDX HY, CDX IG (via ETF proxies, see caveats below) | Yahoo Finance |
+| **Credit** | IHYG, IEAC, HYG, LQD (iShares corporate-bond ETFs) | Yahoo Finance |
 
 All sources are fetched **in parallel** (full snapshot < 1 s) and the last
 snapshot is persisted, so on startup the dashboard immediately shows the
@@ -35,9 +35,21 @@ Each instrument shows **Last**, **1d change** and **YTD change**
 
 ## Quick start
 
-Double-click **`start_dashboard.bat`** (or the *Market Dashboard* desktop
-shortcut). On first run it creates a `.venv` and installs the requirements
-automatically; afterwards it starts instantly.
+Two ways to run it — both refresh every 15 minutes:
+
+- **Browser:** double-click **`start_dashboard.bat`** (or the *Market
+  Dashboard* desktop shortcut) — serves http://localhost:8050.
+- **Desktop wallpaper:** double-click **`start_wallpaper.bat`** (or the
+  *Market Dashboard Wallpaper* shortcut) — no browser at all; the
+  dashboard is rendered to an image and set as the Windows desktop
+  background on every refresh. Keep the (minimized) console window
+  running; closing it stops the updates (the last image stays). Your
+  previous wallpaper path is backed up to `data\original_wallpaper.txt`
+  — restore it any time via Windows Settings > Personalisation >
+  Background.
+
+On first run either launcher creates a `.venv` and installs the
+requirements automatically; afterwards they start instantly.
 
 Manual setup, if preferred:
 
@@ -79,17 +91,16 @@ instrument universe. Add or remove instruments by editing the
   This is the only remaining investing.com dependency — the slow
   per-instrument chart API (`investing.py`) is no longer used, but kept
   in the repo in case single-instrument quotes are needed again.
-- **Credit:** Yahoo has **no CDS index spreads** (iTraxx / CDX on-the-run
-  series). The dashboard currently shows liquid corporate-bond ETFs as
-  clearly-labelled directional proxies (IHYG, IEAC, HYG, LQD). Replacing
-  these with real on-the-run spreads requires a different data source.
+- **Credit** shows the prices of four liquid iShares corporate-bond ETFs
+  (IHYG, IEAC = EUR high yield / IG; HYG, LQD = USD high yield / IG).
 
 ## Project structure
 
 ```
 market_dashboard/
-├── app.py               # Flask server + 15-min background refresh loop
+├── app.py               # 15-min refresh loop; browser or wallpaper mode
 ├── fetcher.py           # orchestrates all sources + row formatting
+├── wallpaper.py         # renders the snapshot to PNG + sets it as wallpaper
 ├── zkb.py               # ZKB swap-rate table + local daily history
 ├── fred.py              # FRED series (EFFR) via keyless csv download
 ├── westmetall.py        # LME cash settlements incl. daily history
@@ -97,7 +108,8 @@ market_dashboard/
 ├── config.py            # refresh interval, port, instrument universe
 ├── templates/
 │   └── index.html       # dashboard page (dark theme, auto-reload)
-├── start_dashboard.bat  # one-click launcher (creates .venv on first run)
+├── start_dashboard.bat  # one-click launcher, browser mode
+├── start_wallpaper.bat  # one-click launcher, desktop-wallpaper mode
 ├── requirements.txt
 └── README.md
 ```
