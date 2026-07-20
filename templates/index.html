@@ -67,6 +67,7 @@
   .pos { color: var(--pos); }
   .neg { color: var(--neg); }
   .flat { color: var(--muted); }
+  .stale { color: #d9a23c; }
   .banner {
     background: var(--card);
     border: 1px solid var(--border);
@@ -107,7 +108,7 @@
       <tr>
         <td class="name">{{ r.name }}{% if r.note %}<span class="note">{{ r.note }}</span>{% endif %}</td>
         <td class="ccy">{{ r.ccy }}</td>
-        <td>{{ r.value }}</td>
+        <td>{{ r.value }}{% if r.asof %}<span class="note stale">{{ r.asof }}</span>{% endif %}</td>
         <td class="{{ r.chg_1d.cls }}">{{ r.chg_1d.text }}</td>
         <td class="{{ r.chg_ytd.cls }}">{{ r.chg_ytd.text }}</td>
       </tr>

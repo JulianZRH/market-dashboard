@@ -1,19 +1,20 @@
-"""Pulls quotes from Yahoo Finance and shapes them for the dashboard template."""
+"""Pulls quotes from Yahoo Finance and investing.com and shapes them for the template."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 import yfinance as yf
 
 import config
+import investing
 
 
-def _all_tickers():
+def _yahoo_tickers():
     return [
         inst["ticker"]
         for instruments in config.ASSET_CLASSES.values()
         for inst in instruments
-        if inst.get("ticker")
+        if inst.get("source", "yahoo") == "yahoo" and inst.get("ticker")
     ]
 
 
@@ -37,7 +38,9 @@ def _fmt_value(value: float, is_yield: bool) -> str:
     return f"{value:,.2f}"
 
 
-def _fmt_change(last: float, base: float, is_yield: bool) -> dict:
+def _fmt_change(last, base, is_yield: bool) -> dict:
+    if base is None:
+        return {"text": "–", "cls": "flat"}
     if is_yield:
         bp = (last - base) * 100
         return {"text": f"{bp:+.1f} bp", "cls": "pos" if bp >= 0 else "neg"}
@@ -45,15 +48,62 @@ def _fmt_change(last: float, base: float, is_yield: bool) -> dict:
     return {"text": f"{pct:+.2f}%", "cls": "pos" if pct >= 0 else "neg"}
 
 
-def fetch_snapshot() -> dict:
-    """Returns {"classes": {class_name: [row, ...]}, "updated": str}.
+def _empty_row(inst) -> dict:
+    return {
+        "name": inst["name"],
+        "ccy": inst["ccy"],
+        "note": inst.get("note", ""),
+        "value": "–",
+        "asof": "",
+        "chg_1d": {"text": "–", "cls": "flat"},
+        "chg_ytd": {"text": "–", "cls": "flat"},
+    }
 
-    Each row: name, ccy, note, value, chg_1d, chg_ytd (change dicts with text/cls).
-    Placeholder instruments (ticker None) and failed downloads yield "n/a" rows.
-    """
-    tickers = _all_tickers()
-    data = yf.download(
-        tickers,
+
+def _yahoo_row(inst, data, multi, current_year) -> dict:
+    row = _empty_row(inst)
+    closes = _closes_for(data, inst["ticker"], multi) * inst.get("scale", 1)
+    if len(closes) >= 2:
+        is_yield = inst["type"] == "yield"
+        last, prev = closes.iloc[-1], closes.iloc[-2]
+        prior_year = closes[closes.index.year < current_year]
+        ytd_base = prior_year.iloc[-1] if len(prior_year) else closes.iloc[0]
+        row["value"] = _fmt_value(last, is_yield)
+        row["chg_1d"] = _fmt_change(last, prev, is_yield)
+        row["chg_ytd"] = _fmt_change(last, ytd_base, is_yield)
+    elif not row["note"]:
+        row["note"] = f"no data returned for {inst['ticker']}"
+    return row
+
+
+def _investing_row(inst) -> dict:
+    row = _empty_row(inst)
+    try:
+        q = investing.quote(inst["pair_id"])
+    except Exception as exc:
+        row["note"] = f"investing.com fetch failed: {type(exc).__name__}"
+        return row
+    if not q:
+        row["note"] = "no data from investing.com"
+        return row
+    is_yield = inst["type"] == "yield"
+    scale = inst.get("scale", 1)
+    last = q["last"] * scale
+    prev = q["prev"] * scale if q["prev"] is not None else None
+    ytd_base = q["ytd_base"] * scale if q["ytd_base"] is not None else None
+    row["value"] = _fmt_value(last, is_yield)
+    row["chg_1d"] = _fmt_change(last, prev, is_yield)
+    row["chg_ytd"] = _fmt_change(last, ytd_base, is_yield)
+    age = datetime.now(timezone.utc) - q["asof"]
+    if age.days >= config.STALE_AFTER_DAYS:
+        row["asof"] = f"as of {q['asof']:%Y-%m-%d}"
+    return row
+
+
+def fetch_snapshot() -> dict:
+    """Returns {"classes": {class_name: [row, ...]}, "updated": str}."""
+    yahoo_data = yf.download(
+        _yahoo_tickers(),
         period="1y",
         interval="1d",
         group_by="ticker",
@@ -61,35 +111,17 @@ def fetch_snapshot() -> dict:
         threads=True,
         progress=False,
     )
-    multi = isinstance(data.columns, pd.MultiIndex)
+    multi = isinstance(yahoo_data.columns, pd.MultiIndex)
     current_year = datetime.now().year
 
     classes = {}
     for class_name, instruments in config.ASSET_CLASSES.items():
         rows = []
         for inst in instruments:
-            row = {
-                "name": inst["name"],
-                "ccy": inst["ccy"],
-                "note": inst.get("note", ""),
-                "value": "–",
-                "chg_1d": {"text": "–", "cls": "flat"},
-                "chg_ytd": {"text": "–", "cls": "flat"},
-            }
-            ticker = inst.get("ticker")
-            if ticker:
-                closes = _closes_for(data, ticker, multi) * inst.get("scale", 1)
-                if len(closes) >= 2:
-                    is_yield = inst["type"] == "yield"
-                    last, prev = closes.iloc[-1], closes.iloc[-2]
-                    prior_year = closes[closes.index.year < current_year]
-                    ytd_base = prior_year.iloc[-1] if len(prior_year) else closes.iloc[0]
-                    row["value"] = _fmt_value(last, is_yield)
-                    row["chg_1d"] = _fmt_change(last, prev, is_yield)
-                    row["chg_ytd"] = _fmt_change(last, ytd_base, is_yield)
-                elif not row["note"]:
-                    row["note"] = f"no data returned for {ticker}"
-            rows.append(row)
+            if inst.get("source", "yahoo") == "investing":
+                rows.append(_investing_row(inst))
+            else:
+                rows.append(_yahoo_row(inst, yahoo_data, multi, current_year))
         classes[class_name] = rows
 
     return {
@@ -105,8 +137,9 @@ if __name__ == "__main__":
     for class_name, rows in snapshot["classes"].items():
         print(f"\n== {class_name} ==")
         for r in rows:
+            asof = f"  [{r['asof']}]" if r["asof"] else ""
             print(
                 f"  {r['name']:<28} {r['ccy']:<4} {r['value']:>12}"
-                f"  1d {r['chg_1d']['text']:>9}  YTD {r['chg_ytd']['text']:>9}"
-                f"  {r['note']}"
+                f"  1d {r['chg_1d']['text']:>9}  YTD {r['chg_ytd']['text']:>10}"
+                f"{asof}  {r['note']}"
             )
