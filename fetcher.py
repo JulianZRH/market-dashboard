@@ -1,12 +1,21 @@
-"""Pulls quotes from Yahoo Finance, ZKB and investing.com and shapes them for the template."""
+"""Pulls quotes from all configured sources and shapes them for the template.
 
-from datetime import datetime, timezone
+Sources (Yahoo bulk download, ZKB swaps, FRED, westmetall, central-bank
+scrape) are independent, so they are fetched in parallel - the snapshot
+takes about as long as the slowest single source instead of the sum.
+"""
+
+import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime, timezone
 
 import pandas as pd
 import yfinance as yf
 
 import config
+import fred
 import investing
+import westmetall
 import zkb
 
 
@@ -63,6 +72,12 @@ def _empty_row(inst) -> dict:
     }
 
 
+def _age_days(asof) -> int:
+    if isinstance(asof, datetime):
+        return (datetime.now(timezone.utc) - asof).days
+    return (date.today() - asof).days
+
+
 def _yahoo_row(inst, data, multi, current_year) -> dict:
     row = _empty_row(inst)
     closes = _closes_for(data, inst["ticker"], multi) * inst.get("scale", 1)
@@ -79,6 +94,30 @@ def _yahoo_row(inst, data, multi, current_year) -> dict:
     return row
 
 
+def _quote_row(inst, result, stale_days=None) -> dict:
+    """Row from a {"last","prev","ytd_base","asof"} quote (fred / westmetall /
+    investing). `result` may also be an Exception from the parallel fetch."""
+    row = _empty_row(inst)
+    if isinstance(result, Exception):
+        row["note"] = f"fetch failed: {type(result).__name__}"
+        return row
+    if not result:
+        row["note"] = "no data"
+        return row
+    is_yield = inst["type"] == "yield"
+    scale = inst.get("scale", 1)
+    last = result["last"] * scale
+    prev = result["prev"] * scale if result["prev"] is not None else None
+    ytd_base = result["ytd_base"] * scale if result["ytd_base"] is not None else None
+    row["value"] = _fmt_value(last, is_yield, inst.get("decimals"))
+    row["chg_1d"] = _fmt_change(last, prev, is_yield)
+    row["chg_ytd"] = _fmt_change(last, ytd_base, is_yield)
+    threshold = stale_days if stale_days is not None else config.STALE_AFTER_DAYS
+    if result.get("asof") is not None and _age_days(result["asof"]) >= threshold:
+        row["asof"] = f"as of {result['asof']:%Y-%m-%d}"
+    return row
+
+
 def _zkb_row(inst, swap_rates, swap_history) -> dict:
     """A swap-rate row from the ZKB table + locally accumulated history."""
     row = _empty_row(inst)
@@ -90,30 +129,6 @@ def _zkb_row(inst, swap_rates, swap_history) -> dict:
     row["value"] = _fmt_value(rate, is_yield=True)
     row["chg_1d"] = _fmt_change(rate, bases["prev"], is_yield=True)
     row["chg_ytd"] = _fmt_change(rate, bases["ytd_base"], is_yield=True)
-    return row
-
-
-def _investing_row(inst) -> dict:
-    row = _empty_row(inst)
-    try:
-        q = investing.quote(inst["pair_id"])
-    except Exception as exc:
-        row["note"] = f"investing.com fetch failed: {type(exc).__name__}"
-        return row
-    if not q:
-        row["note"] = "no data from investing.com"
-        return row
-    is_yield = inst["type"] == "yield"
-    scale = inst.get("scale", 1)
-    last = q["last"] * scale
-    prev = q["prev"] * scale if q["prev"] is not None else None
-    ytd_base = q["ytd_base"] * scale if q["ytd_base"] is not None else None
-    row["value"] = _fmt_value(last, is_yield, inst.get("decimals"))
-    row["chg_1d"] = _fmt_change(last, prev, is_yield)
-    row["chg_ytd"] = ytd_override or _fmt_change(last, ytd_base, is_yield)
-    age = datetime.now(timezone.utc) - q["asof"]
-    if age.days >= config.STALE_AFTER_DAYS:
-        row["asof"] = f"as of {q['asof']:%Y-%m-%d}"
     return row
 
 
@@ -133,39 +148,94 @@ def _cbrate_row(inst, cb_rates) -> dict:
     return row
 
 
+def _timed(label, fn, *args, **kwargs):
+    """Wraps a source fetch so each one logs its duration."""
+    def run():
+        t0 = time.time()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            print(f"[fetch] {label}: {time.time() - t0:.1f}s", flush=True)
+    return run
+
+
+def _submit_all(executor) -> dict:
+    """Kicks off every source fetch in parallel. Returns {key: future}."""
+    futures = {
+        "yahoo": executor.submit(
+            _timed(
+                "yahoo",
+                yf.download,
+                _yahoo_tickers(),
+                period="1y",
+                interval="1d",
+                group_by="ticker",
+                auto_adjust=False,
+                threads=True,
+                progress=False,
+            )
+        )
+    }
+    for instruments in config.ASSET_CLASSES.values():
+        for inst in instruments:
+            source = inst.get("source", "yahoo")
+            if source == "zkb" and "zkb" not in futures:
+                futures["zkb"] = executor.submit(_timed("zkb", zkb.swap_rates))
+            elif source == "cbrate" and "cbrate" not in futures:
+                futures["cbrate"] = executor.submit(
+                    _timed("cbrate", investing.central_bank_rates)
+                )
+            elif source == "fred":
+                key = ("fred", inst["series"])
+                if key not in futures:
+                    futures[key] = executor.submit(
+                        _timed(f"fred {inst['series']}", fred.quote, inst["series"])
+                    )
+            elif source == "westmetall":
+                key = ("westmetall", inst["field"])
+                if key not in futures:
+                    futures[key] = executor.submit(
+                        _timed(f"lme {inst['field']}", westmetall.quote, inst["field"])
+                    )
+            elif source == "investing":
+                key = ("investing", inst["pair_id"])
+                if key not in futures:
+                    futures[key] = executor.submit(
+                        _timed(f"investing {inst['pair_id']}", investing.quote, inst["pair_id"])
+                    )
+    return futures
+
+
 def fetch_snapshot() -> dict:
     """Returns {"classes": {class_name: [row, ...]}, "updated": str}."""
-    yahoo_data = yf.download(
-        _yahoo_tickers(),
-        period="1y",
-        interval="1d",
-        group_by="ticker",
-        auto_adjust=False,
-        threads=True,
-        progress=False,
-    )
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = _submit_all(executor)
+        results = {}
+        for key, future in futures.items():
+            try:
+                results[key] = future.result(timeout=120)
+            except Exception as exc:
+                results[key] = exc
+
+    yahoo_data = results["yahoo"]
+    if isinstance(yahoo_data, Exception):
+        yahoo_data = pd.DataFrame()
     multi = isinstance(yahoo_data.columns, pd.MultiIndex)
     current_year = datetime.now().year
 
-    sources = {
-        inst.get("source", "yahoo")
-        for instruments in config.ASSET_CLASSES.values()
-        for inst in instruments
-    }
-    cb_rates = None
-    if "cbrate" in sources:
-        try:
-            cb_rates = investing.central_bank_rates()
-        except Exception:
-            cb_rates = None
-    swap_rates = None
+    swap_rates = results.get("zkb")
     swap_history = None
-    if "zkb" in sources:
+    if swap_rates is not None and not isinstance(swap_rates, Exception):
         try:
-            swap_rates = zkb.swap_rates()
             swap_history = zkb.update_history(swap_rates)
         except Exception:
-            swap_rates = None
+            swap_history = None
+    else:
+        swap_rates = None
+
+    cb_rates = results.get("cbrate")
+    if isinstance(cb_rates, Exception):
+        cb_rates = None
 
     classes = {}
     for class_name, instruments in config.ASSET_CLASSES.items():
@@ -176,8 +246,14 @@ def fetch_snapshot() -> dict:
                 rows.append(_zkb_row(inst, swap_rates, swap_history))
             elif source == "cbrate":
                 rows.append(_cbrate_row(inst, cb_rates))
+            elif source == "fred":
+                # published T+2 -> only flag as stale beyond the normal lag
+                rows.append(_quote_row(inst, results[("fred", inst["series"])], stale_days=5))
+            elif source == "westmetall":
+                # EOD settlement (T-1) -> allow for weekends before flagging
+                rows.append(_quote_row(inst, results[("westmetall", inst["field"])], stale_days=5))
             elif source == "investing":
-                rows.append(_investing_row(inst))
+                rows.append(_quote_row(inst, results[("investing", inst["pair_id"])]))
             else:
                 rows.append(_yahoo_row(inst, yahoo_data, multi, current_year))
         classes[class_name] = rows
@@ -197,7 +273,7 @@ if __name__ == "__main__":
         for r in rows:
             asof = f"  [{r['asof']}]" if r["asof"] else ""
             print(
-                f"  {r['name']:<28} {r['ccy']:<4} {r['value']:>12}"
+                f"  {r['name']:<32} {r['ccy']:<4} {r['value']:>12}"
                 f"  1d {r['chg_1d']['text']:>9}  YTD {r['chg_ytd']['text']:>10}"
                 f"{asof}  {r['note']}"
             )

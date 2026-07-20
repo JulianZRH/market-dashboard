@@ -6,14 +6,18 @@ displays it in the browser, segregated into asset classes:
 
 | Asset class | Contents | Source |
 |---|---|---|
-| **Equity** | S&P 500, Nasdaq 100, Euro Stoxx 50, DAX, SMI, FTSE 100, CAC 40, Nikkei 225, Hang Seng, VT (Vanguard Total World ETF) | Yahoo Finance |
-| **Rates** | Central-bank policy rates (Fed, ECB, SNB) and interest rate swaps 2y / 3y / 5y / 10y in USD, EUR, CHF | investing.com (policy) + ZKB (swaps) |
+| **Equity** | S&P 500, Nasdaq 100, Euro Stoxx 50, DAX, SMI, FTSE 100, CAC 40, Nikkei 225, Hang Seng, VT (Vanguard Total World ETF), Leonteq | Yahoo Finance |
+| **Rates** | Effective Federal Funds Rate (FRED), ECB / SNB policy rates, interest rate swaps 2y / 3y / 5y / 10y in USD, EUR, CHF | FRED + investing.com + ZKB |
 | **Precious Metals** | Gold, Silver, Palladium, Platinum | Yahoo Finance |
 | **Energy** | WTI, Brent, Nat Gas | Yahoo Finance |
-| **Industrial Metals** | Copper | Yahoo Finance |
-| **Crypto** | Bitcoin, Ether, Solana | Yahoo Finance |
+| **Industrial Metals** | Copper, Aluminium, Nickel, Zinc, Lead (LME cash, USD/t) | westmetall.com |
+| **Crypto** | Bitcoin, Ether, Solana, XRP, UNUS SED LEO | Yahoo Finance |
 | **FX** | USD/CHF, EUR/CHF, EUR/USD | Yahoo Finance |
 | **Credit** | iTraxx Crossover, iTraxx Europe (Main), CDX HY, CDX IG (via ETF proxies, see caveats below) | Yahoo Finance |
+
+All sources are fetched **in parallel** (full snapshot < 1 s) and the last
+snapshot is persisted, so on startup the dashboard immediately shows the
+previous session's data while fresh data loads in the background.
 
 Each instrument shows **Last**, **1d change** and **YTD change**
 (percent for prices, basis points for yields).
@@ -64,6 +68,11 @@ instrument universe. Add or remove instruments by editing the
   therefore records them daily in `data/swap_history.json` and computes
   1d / YTD changes from that accumulated history (1d appears from the
   second day of running, YTD once history reaches back to a year-end).
+- **EFFR** comes from FRED's keyless `fredgraph.csv` download (series
+  `EFFR`); the NY Fed publishes it with ~2 business days lag.
+- **LME metals** are the official daily cash settlements (T-1) parsed from
+  [westmetall.com](https://www.westmetall.com/en/markdaten.php); their
+  history tables provide proper 1d / YTD changes, cached per calendar day.
 - **Policy rates** are scraped from
   [investing.com/central-banks](https://www.investing.com/central-banks/)
   (cached for 12h; the row note shows the last change and next meeting).
@@ -82,6 +91,8 @@ market_dashboard/
 ├── app.py               # Flask server + 15-min background refresh loop
 ├── fetcher.py           # orchestrates all sources + row formatting
 ├── zkb.py               # ZKB swap-rate table + local daily history
+├── fred.py              # FRED series (EFFR) via keyless csv download
+├── westmetall.py        # LME cash settlements incl. daily history
 ├── investing.py         # investing.com access (only policy rates in use)
 ├── config.py            # refresh interval, port, instrument universe
 ├── templates/

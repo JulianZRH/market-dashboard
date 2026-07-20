@@ -8,10 +8,13 @@ Instrument fields:
     ccy      currency label shown in the table
     type     "price" -> changes shown in %
              "yield" -> changes shown in basis points
-    source      "yahoo" (default), "zkb", "cbrate" or "investing"
+    source      "yahoo" (default), "zkb", "cbrate", "fred", "westmetall"
+                or "investing"
     ticker      Yahoo Finance symbol            (source "yahoo")
     swap        ZKB swap key "<CCY><years>", e.g. "CHF2"   (source "zkb")
     bank        central-bank code on investing.com/central-banks/ (source "cbrate")
+    series      FRED series id, e.g. "EFFR"     (source "fred")
+    field       westmetall table field, e.g. "LME_Ni_cash" (source "westmetall")
     pair_id     investing.com numeric pair id   (source "investing", currently unused)
     scale       optional multiplier applied to the raw quote (default 1)
     decimals    optional number of decimals for the Last column
@@ -41,12 +44,15 @@ ASSET_CLASSES = {
         {"name": "Hang Seng",     "ticker": "^HSI",      "ccy": "HKD", "type": "price"},
         {"name": "World (VT)",    "ticker": "VT",        "ccy": "USD", "type": "price",
          "note": "Vanguard Total World ETF"},
+        {"name": "Leonteq",       "ticker": "LEON.SW",   "ccy": "CHF", "type": "price",
+         "note": "Leonteq Securities AG (SIX)"},
     ],
     # Central-bank policy rates (investing.com/central-banks/, 12h cache)
     # plus interest rate swaps from the ZKB finance portal.
     # ZKB's table starts at 2 years, so 2Y stands in for the 1Y bucket.
     "Rates (policy + swaps)": [
-        {"name": "Fed Funds", "bank": "FED", "ccy": "USD", "type": "yield", "source": "cbrate"},
+        {"name": "Effective Federal Funds Rate", "series": "EFFR", "ccy": "USD",
+         "type": "yield", "source": "fred", "note": "NY Fed via FRED, published T+2"},
         {"name": "USD 2Y",  "swap": "USD2",  "ccy": "USD", "type": "yield", "source": "zkb"},
         {"name": "USD 3Y",  "swap": "USD3",  "ccy": "USD", "type": "yield", "source": "zkb"},
         {"name": "USD 5Y",  "swap": "USD5",  "ccy": "USD", "type": "yield", "source": "zkb"},
@@ -73,13 +79,21 @@ ASSET_CLASSES = {
         {"name": "Brent Crude", "ticker": "BZ=F", "ccy": "USD", "type": "price"},
         {"name": "Nat Gas (Henry Hub)", "ticker": "NG=F", "ccy": "USD", "type": "price"},
     ],
-    "Industrial Metals": [
-        {"name": "Copper", "ticker": "HG=F", "ccy": "USD", "type": "price"},
+    # Official LME cash settlements (USD/t) from westmetall.com - Yahoo has
+    # no LME quotes. Settled once per day (T-1), hence EOD values.
+    "Industrial Metals (LME, USD/t)": [
+        {"name": "Copper",    "field": "LME_Cu_cash", "ccy": "USD", "type": "price", "source": "westmetall"},
+        {"name": "Aluminium", "field": "LME_Al_cash", "ccy": "USD", "type": "price", "source": "westmetall"},
+        {"name": "Nickel",    "field": "LME_Ni_cash", "ccy": "USD", "type": "price", "source": "westmetall"},
+        {"name": "Zinc",      "field": "LME_Zn_cash", "ccy": "USD", "type": "price", "source": "westmetall"},
+        {"name": "Lead",      "field": "LME_Pb_cash", "ccy": "USD", "type": "price", "source": "westmetall"},
     ],
     "Crypto": [
-        {"name": "Bitcoin",  "ticker": "BTC-USD", "ccy": "USD", "type": "price"},
-        {"name": "Ether",    "ticker": "ETH-USD", "ccy": "USD", "type": "price"},
-        {"name": "Solana",   "ticker": "SOL-USD", "ccy": "USD", "type": "price"},
+        {"name": "Bitcoin",       "ticker": "BTC-USD", "ccy": "USD", "type": "price"},
+        {"name": "Ether",         "ticker": "ETH-USD", "ccy": "USD", "type": "price"},
+        {"name": "Solana",        "ticker": "SOL-USD", "ccy": "USD", "type": "price"},
+        {"name": "XRP",           "ticker": "XRP-USD", "ccy": "USD", "type": "price", "decimals": 4},
+        {"name": "UNUS SED LEO",  "ticker": "LEO-USD", "ccy": "USD", "type": "price"},
     ],
     "FX": [
         {"name": "USD/CHF", "ticker": "CHF=X",    "ccy": "CHF", "type": "price", "decimals": 4},
