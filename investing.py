@@ -13,6 +13,7 @@ quote(pair_id) returns:
     asof      UTC datetime of the last data point (swaps update irregularly)
 """
 
+import re
 import time
 from datetime import date, datetime, timezone
 
@@ -57,6 +58,33 @@ def _ytd_base(pair_id: int):
     base = prior[-1] if prior else (points[0][1] if points else None)
     _ytd_cache[pair_id] = (today, base)
     return base
+
+
+def central_bank_rates() -> dict:
+    """Scrapes https://www.investing.com/central-banks/ (rates change rarely,
+    so plain HTML scraping is fine here).
+
+    Returns {"FED": {"rate": 3.75, "next": "Jul 29, 2026",
+                     "last_change": "Dec 10, 2025 (-25bp)"}, ...}
+    for every bank code found on the page.
+    """
+    r = requests.get(
+        "https://www.investing.com/central-banks/", impersonate="chrome", timeout=25
+    )
+    r.raise_for_status()
+    text = re.sub(r"<[^>]+>", "|", r.text)
+    text = re.sub(r"[\s ]*\|[\s ]*", "|", text)
+    text = re.sub(r"\|+", "|", text)
+    out = {}
+    for code, rate, nxt, last in re.findall(
+        r"\(([A-Z]{2,5})\)\|([\d.]+)%\|([^|]*)\|([^|]*)\|", text
+    ):
+        out[code] = {
+            "rate": float(rate),
+            "next": nxt.strip(),
+            "last_change": last.strip(),
+        }
+    return out
 
 
 def quote(pair_id: int):

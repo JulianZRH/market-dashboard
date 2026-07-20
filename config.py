@@ -8,11 +8,15 @@ Instrument fields:
     ccy      currency label shown in the table
     type     "price" -> changes shown in %
              "yield" -> changes shown in basis points
-    source   "yahoo" (default) or "investing"
-    ticker   Yahoo Finance symbol            (source "yahoo")
-    pair_id  investing.com numeric pair id   (source "investing")
-    scale    optional multiplier applied to the raw quote (default 1)
-    note     small-print remark shown under the instrument name
+    source      "yahoo" (default), "investing" or "cbrate"
+    ticker      Yahoo Finance symbol            (source "yahoo")
+    pair_id     investing.com numeric pair id   (source "investing")
+    bank        central-bank code on investing.com/central-banks/ (source "cbrate")
+    ytd_ticker  optional Yahoo symbol used for the YTD change instead of the
+                instrument's own series (futures YTD vs the cash index)
+    scale       optional multiplier applied to the raw quote (default 1)
+    decimals    optional number of decimals for the Last column
+    note        small-print remark shown under the instrument name
 
 investing.com pair ids were extracted from the instrument pages
 (e.g. https://www.investing.com/rates-bonds/eur-5-years-irs-interest-rate-swap).
@@ -24,30 +28,38 @@ PAGE_RELOAD_SECONDS = 60    # how often the browser re-renders the cached data
 STALE_AFTER_DAYS = 3        # show "as of <date>" when data is older than this
 
 ASSET_CLASSES = {
-    # Front-month continuous futures from investing.com - they trade nearly
-    # around the clock, unlike the cash indices, and cover the European
-    # contracts (FESX, FDAX, FSMI, Z) that Yahoo Finance does not carry.
-    "Equity (front-month futures)": [
-        {"name": "S&P 500",       "pair_id": 8839, "ccy": "USD", "type": "price", "source": "investing"},
-        {"name": "Nasdaq 100",    "pair_id": 8874, "ccy": "USD", "type": "price", "source": "investing"},
-        {"name": "Euro Stoxx 50", "pair_id": 8867, "ccy": "EUR", "type": "price", "source": "investing"},
-        {"name": "DAX",           "pair_id": 8826, "ccy": "EUR", "type": "price", "source": "investing"},
-        {"name": "SMI",           "pair_id": 8837, "ccy": "CHF", "type": "price", "source": "investing"},
-        {"name": "FTSE 100",      "pair_id": 8838, "ccy": "GBP", "type": "price", "source": "investing"},
-        {"name": "CAC 40",        "pair_id": 8853, "ccy": "EUR", "type": "price", "source": "investing"},
-        {"name": "Nikkei 225",    "pair_id": 8859, "ccy": "JPY", "type": "price", "source": "investing"},
-        {"name": "Hang Seng",     "pair_id": 8984, "ccy": "HKD", "type": "price", "source": "investing"},
+    # Last/1d from front-month continuous futures (investing.com) - they trade
+    # nearly around the clock and cover the European contracts (FESX, FDAX,
+    # FSMI, Z) that Yahoo Finance does not carry. YTD is computed against the
+    # cash index (ytd_ticker, Yahoo), since the continuous futures series
+    # crosses contract rolls and would distort the YTD figure.
+    "Equity (futures, YTD vs cash)": [
+        {"name": "S&P 500",       "pair_id": 8839, "ytd_ticker": "^GSPC",     "ccy": "USD", "type": "price", "source": "investing"},
+        {"name": "Nasdaq 100",    "pair_id": 8874, "ytd_ticker": "^NDX",      "ccy": "USD", "type": "price", "source": "investing"},
+        {"name": "Euro Stoxx 50", "pair_id": 8867, "ytd_ticker": "^STOXX50E", "ccy": "EUR", "type": "price", "source": "investing"},
+        {"name": "DAX",           "pair_id": 8826, "ytd_ticker": "^GDAXI",    "ccy": "EUR", "type": "price", "source": "investing"},
+        {"name": "SMI",           "pair_id": 8837, "ytd_ticker": "^SSMI",     "ccy": "CHF", "type": "price", "source": "investing"},
+        {"name": "FTSE 100",      "pair_id": 8838, "ytd_ticker": "^FTSE",     "ccy": "GBP", "type": "price", "source": "investing"},
+        {"name": "CAC 40",        "pair_id": 8853, "ytd_ticker": "^FCHI",     "ccy": "EUR", "type": "price", "source": "investing"},
+        {"name": "Nikkei 225",    "pair_id": 8859, "ytd_ticker": "^N225",     "ccy": "JPY", "type": "price", "source": "investing"},
+        {"name": "Hang Seng",     "pair_id": 8984, "ytd_ticker": "^HSI",      "ccy": "HKD", "type": "price", "source": "investing"},
+        {"name": "World (VT)",    "ticker": "VT",  "ccy": "USD", "type": "price",
+         "note": "Vanguard Total World ETF (spot)"},
     ],
-    # Interest rate swaps from investing.com (Yahoo has no EUR/CHF yields).
-    "Rates (IRS)": [
+    # Central-bank policy rates (scraped from investing.com/central-banks/)
+    # plus interest rate swaps (Yahoo has no EUR/CHF yields).
+    "Rates (policy + IRS)": [
+        {"name": "Fed Funds", "bank": "FED", "ccy": "USD", "type": "yield", "source": "cbrate"},
         {"name": "USD 1Y",  "pair_id": 1118148, "ccy": "USD", "type": "yield", "source": "investing", "note": "USDSB3L1Y="},
         {"name": "USD 3Y",  "pair_id": 1122447, "ccy": "USD", "type": "yield", "source": "investing", "note": "USDSB3L3Y="},
         {"name": "USD 5Y",  "pair_id": 1122449, "ccy": "USD", "type": "yield", "source": "investing", "note": "USDSB3L5Y="},
         {"name": "USD 10Y", "pair_id": 1122453, "ccy": "USD", "type": "yield", "source": "investing", "note": "USDSB3L10Y="},
+        {"name": "ECB (main refi)", "bank": "ECB", "ccy": "EUR", "type": "yield", "source": "cbrate"},
         {"name": "EUR 1Y",  "pair_id": 1156452, "ccy": "EUR", "type": "yield", "source": "investing", "note": "EURIRS1Y="},
         {"name": "EUR 3Y",  "pair_id": 1156454, "ccy": "EUR", "type": "yield", "source": "investing", "note": "EURIRS3Y="},
         {"name": "EUR 5Y",  "pair_id": 1156456, "ccy": "EUR", "type": "yield", "source": "investing", "note": "EURIRS5Y="},
         {"name": "EUR 10Y", "pair_id": 1156461, "ccy": "EUR", "type": "yield", "source": "investing", "note": "EURIRS10Y="},
+        {"name": "SNB policy rate", "bank": "SNB", "ccy": "CHF", "type": "yield", "source": "cbrate"},
         {"name": "CHF 1Y",  "pair_id": 1156470, "ccy": "CHF", "type": "yield", "source": "investing", "note": "CHFIRS1Y="},
         {"name": "CHF 3Y",  "pair_id": 1156472, "ccy": "CHF", "type": "yield", "source": "investing", "note": "CHFIRS3Y="},
         {"name": "CHF 5Y",  "pair_id": 1156474, "ccy": "CHF", "type": "yield", "source": "investing", "note": "CHFIRS5Y="},
@@ -61,6 +73,12 @@ ASSET_CLASSES = {
         {"name": "Copper",      "ticker": "HG=F",  "ccy": "USD", "type": "price"},
         {"name": "Nat Gas (Henry Hub)", "ticker": "NG=F", "ccy": "USD", "type": "price"},
         {"name": "Platinum",    "ticker": "PL=F",  "ccy": "USD", "type": "price"},
+        {"name": "Palladium",   "ticker": "PA=F",  "ccy": "USD", "type": "price"},
+    ],
+    "FX": [
+        {"name": "USD/CHF", "ticker": "CHF=X",    "ccy": "CHF", "type": "price", "decimals": 4},
+        {"name": "EUR/CHF", "ticker": "EURCHF=X", "ccy": "CHF", "type": "price", "decimals": 4},
+        {"name": "EUR/USD", "ticker": "EURUSD=X", "ccy": "USD", "type": "price", "decimals": 4},
     ],
     "Credit": [
         # Yahoo Finance has no CDS index (iTraxx / CDX on-the-run) spreads.

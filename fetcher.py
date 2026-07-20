@@ -10,12 +10,14 @@ import investing
 
 
 def _yahoo_tickers():
-    return [
-        inst["ticker"]
-        for instruments in config.ASSET_CLASSES.values()
-        for inst in instruments
-        if inst.get("source", "yahoo") == "yahoo" and inst.get("ticker")
-    ]
+    tickers = []
+    for instruments in config.ASSET_CLASSES.values():
+        for inst in instruments:
+            if inst.get("source", "yahoo") == "yahoo" and inst.get("ticker"):
+                tickers.append(inst["ticker"])
+            if inst.get("ytd_ticker"):
+                tickers.append(inst["ytd_ticker"])
+    return tickers
 
 
 def _closes_for(data: pd.DataFrame, ticker: str, multi: bool) -> pd.Series:
@@ -30,9 +32,11 @@ def _closes_for(data: pd.DataFrame, ticker: str, multi: bool) -> pd.Series:
     return df["Close"].dropna()
 
 
-def _fmt_value(value: float, is_yield: bool) -> str:
+def _fmt_value(value: float, is_yield: bool, decimals=None) -> str:
     if is_yield:
         return f"{value:.2f}%"
+    if decimals is not None:
+        return f"{value:,.{decimals}f}"
     if value >= 1000:
         return f"{value:,.0f}"
     return f"{value:,.2f}"
@@ -60,6 +64,16 @@ def _empty_row(inst) -> dict:
     }
 
 
+def _cash_ytd_change(data, multi, ticker, current_year):
+    """YTD change of a Yahoo cash series, used to override a future's YTD."""
+    closes = _closes_for(data, ticker, multi)
+    if len(closes) < 2:
+        return None
+    prior_year = closes[closes.index.year < current_year]
+    base = prior_year.iloc[-1] if len(prior_year) else closes.iloc[0]
+    return _fmt_change(closes.iloc[-1], base, is_yield=False)
+
+
 def _yahoo_row(inst, data, multi, current_year) -> dict:
     row = _empty_row(inst)
     closes = _closes_for(data, inst["ticker"], multi) * inst.get("scale", 1)
@@ -68,7 +82,7 @@ def _yahoo_row(inst, data, multi, current_year) -> dict:
         last, prev = closes.iloc[-1], closes.iloc[-2]
         prior_year = closes[closes.index.year < current_year]
         ytd_base = prior_year.iloc[-1] if len(prior_year) else closes.iloc[0]
-        row["value"] = _fmt_value(last, is_yield)
+        row["value"] = _fmt_value(last, is_yield, inst.get("decimals"))
         row["chg_1d"] = _fmt_change(last, prev, is_yield)
         row["chg_ytd"] = _fmt_change(last, ytd_base, is_yield)
     elif not row["note"]:
@@ -76,7 +90,7 @@ def _yahoo_row(inst, data, multi, current_year) -> dict:
     return row
 
 
-def _investing_row(inst) -> dict:
+def _investing_row(inst, ytd_override=None) -> dict:
     row = _empty_row(inst)
     try:
         q = investing.quote(inst["pair_id"])
@@ -91,12 +105,28 @@ def _investing_row(inst) -> dict:
     last = q["last"] * scale
     prev = q["prev"] * scale if q["prev"] is not None else None
     ytd_base = q["ytd_base"] * scale if q["ytd_base"] is not None else None
-    row["value"] = _fmt_value(last, is_yield)
+    row["value"] = _fmt_value(last, is_yield, inst.get("decimals"))
     row["chg_1d"] = _fmt_change(last, prev, is_yield)
-    row["chg_ytd"] = _fmt_change(last, ytd_base, is_yield)
+    row["chg_ytd"] = ytd_override or _fmt_change(last, ytd_base, is_yield)
     age = datetime.now(timezone.utc) - q["asof"]
     if age.days >= config.STALE_AFTER_DAYS:
         row["asof"] = f"as of {q['asof']:%Y-%m-%d}"
+    return row
+
+
+def _cbrate_row(inst, cb_rates) -> dict:
+    row = _empty_row(inst)
+    info = (cb_rates or {}).get(inst["bank"])
+    if not info:
+        row["note"] = f"central-bank scrape failed ({inst['bank']})"
+        return row
+    row["value"] = _fmt_value(info["rate"], is_yield=True)
+    parts = []
+    if info["last_change"]:
+        parts.append(f"last change {info['last_change']}")
+    if info["next"]:
+        parts.append(f"next {info['next']}")
+    row["note"] = " · ".join(parts)
     return row
 
 
@@ -114,12 +144,32 @@ def fetch_snapshot() -> dict:
     multi = isinstance(yahoo_data.columns, pd.MultiIndex)
     current_year = datetime.now().year
 
+    needs_cb = any(
+        inst.get("source") == "cbrate"
+        for instruments in config.ASSET_CLASSES.values()
+        for inst in instruments
+    )
+    cb_rates = None
+    if needs_cb:
+        try:
+            cb_rates = investing.central_bank_rates()
+        except Exception:
+            cb_rates = None
+
     classes = {}
     for class_name, instruments in config.ASSET_CLASSES.items():
         rows = []
         for inst in instruments:
-            if inst.get("source", "yahoo") == "investing":
-                rows.append(_investing_row(inst))
+            source = inst.get("source", "yahoo")
+            if source == "investing":
+                ytd_override = None
+                if inst.get("ytd_ticker"):
+                    ytd_override = _cash_ytd_change(
+                        yahoo_data, multi, inst["ytd_ticker"], current_year
+                    )
+                rows.append(_investing_row(inst, ytd_override))
+            elif source == "cbrate":
+                rows.append(_cbrate_row(inst, cb_rates))
             else:
                 rows.append(_yahoo_row(inst, yahoo_data, multi, current_year))
         classes[class_name] = rows

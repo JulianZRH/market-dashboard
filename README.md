@@ -2,13 +2,14 @@
 
 A lightweight local dashboard that pulls market data from **Yahoo Finance**
 and **investing.com** every 15 minutes and displays it in the browser,
-segregated into four asset classes:
+segregated into asset classes:
 
 | Asset class | Contents | Source |
 |---|---|---|
-| **Equity** | Front-month futures: S&P 500, Nasdaq 100, Euro Stoxx 50, DAX, SMI, FTSE 100, CAC 40, Nikkei 225, Hang Seng | investing.com |
-| **Rates** | Interest rate swaps 1y / 3y / 5y / 10y in USD (`USDSB3L…=`), EUR (`EURIRS…=`), CHF (`CHFIRS…=`) | investing.com |
-| **Commodities** | Gold, Silver, WTI, Brent, Copper, Nat Gas, Platinum | Yahoo Finance |
+| **Equity** | Front-month futures: S&P 500, Nasdaq 100, Euro Stoxx 50, DAX, SMI, FTSE 100, CAC 40, Nikkei 225, Hang Seng — YTD vs the cash index — plus VT (Vanguard Total World ETF, spot) | investing.com + Yahoo |
+| **Rates** | Central-bank policy rates (Fed, ECB, SNB) and interest rate swaps 1y / 3y / 5y / 10y in USD (`USDSB3L…=`), EUR (`EURIRS…=`), CHF (`CHFIRS…=`) | investing.com |
+| **Commodities** | Gold, Silver, WTI, Brent, Copper, Nat Gas, Platinum, Palladium | Yahoo Finance |
+| **FX** | USD/CHF, EUR/CHF, EUR/USD | Yahoo Finance |
 | **Credit** | iTraxx Crossover, iTraxx Europe (Main), CDX HY, CDX IG (via ETF proxies, see caveats below) | Yahoo Finance |
 
 Each instrument shows **Last**, **1d change** and **YTD change**
@@ -63,9 +64,13 @@ instrument universe. Add or remove instruments by editing the
   live). Rows whose last data point is older than `STALE_AFTER_DAYS`
   (default 3) show an orange **"as of \<date\>"** marker instead of
   pretending to be live.
-- **Futures YTD:** the equity YTD change is computed on the continuous
-  front-month futures series, which crosses contract rolls — it can differ
-  noticeably from the cash-index YTD (carry / roll effects).
+- **Futures vs cash:** equity Last/1d come from the continuous front-month
+  future; the YTD change is computed on the cash index (`ytd_ticker` in
+  `config.py`), because the continuous futures series crosses contract
+  rolls and would distort the YTD figure.
+- **Policy rates** are scraped from
+  [investing.com/central-banks](https://www.investing.com/central-banks/);
+  the row note shows the last change and the next meeting date.
 - **Credit:** Yahoo has **no CDS index spreads** (iTraxx / CDX on-the-run
   series). The dashboard currently shows liquid corporate-bond ETFs as
   clearly-labelled directional proxies (IHYG, IEAC, HYG, LQD). Replacing
