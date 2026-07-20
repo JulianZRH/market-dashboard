@@ -78,44 +78,57 @@ class IDesktopWallpaper(comtypes.IUnknown):
 _CLSID_DESKTOP_WALLPAPER = comtypes.GUID("{C2CF3110-460E-4FC1-B9D0-8A1C0C9CC4BD}")
 
 
-def _pick_monitor():
+def _desktop_wallpaper():
+    comtypes.CoInitialize()
+    return comtypes.CoCreateInstance(
+        _CLSID_DESKTOP_WALLPAPER, interface=IDesktopWallpaper
+    )
+
+
+def _monitors(dw):
+    """[(monitor_id, RECT), ...] for all attached monitors."""
+    monitors = []
+    for i in range(dw.GetMonitorDevicePathCount()):
+        monitor_id = dw.GetMonitorDevicePathAt(i)
+        try:
+            rect = dw.GetMonitorRECT(monitor_id)
+        except Exception:
+            continue  # stale entry for a disconnected monitor
+        monitors.append((monitor_id, rect))
+    return monitors
+
+
+def _pick_monitor(monitors):
     """Returns (monitor_id, (width, height)) of the configured monitor, or
-    None when WALLPAPER_MONITOR is "all" / COM is unavailable."""
+    None when WALLPAPER_MONITOR is "all"."""
     side = getattr(config, "WALLPAPER_MONITOR", "all").lower()
-    if side not in ("left", "right"):
+    if side not in ("left", "right") or not monitors:
         return None
-    try:
-        comtypes.CoInitialize()
-        dw = comtypes.CoCreateInstance(
-            _CLSID_DESKTOP_WALLPAPER, interface=IDesktopWallpaper
-        )
-        monitors = []
-        for i in range(dw.GetMonitorDevicePathCount()):
-            monitor_id = dw.GetMonitorDevicePathAt(i)
-            try:
-                rect = dw.GetMonitorRECT(monitor_id)
-            except Exception:
-                continue  # stale entry for a disconnected monitor
-            monitors.append((monitor_id, rect))
-        if not monitors:
-            return None
-        pick = min if side == "left" else max
-        monitor_id, rect = pick(monitors, key=lambda m: m[1].left)
-        return monitor_id, (rect.right - rect.left, rect.bottom - rect.top)
-    except Exception:
-        return None
+    pick = min if side == "left" else max
+    monitor_id, rect = pick(monitors, key=lambda m: m[1].left)
+    return monitor_id, (rect.right - rect.left, rect.bottom - rect.top)
 
 
-def _set_monitor_wallpaper(monitor_id: str, path: Path) -> bool:
-    try:
-        comtypes.CoInitialize()
-        dw = comtypes.CoCreateInstance(
-            _CLSID_DESKTOP_WALLPAPER, interface=IDesktopWallpaper
-        )
-        dw.SetWallpaper(monitor_id, str(path))
-        return True
-    except Exception:
-        return False
+def _black_image(size) -> Path:
+    path = _DATA_DIR / f"black_{size[0]}x{size[1]}.png"
+    if not path.exists():
+        _DATA_DIR.mkdir(exist_ok=True)
+        Image.new("RGB", size, "#000000").save(path)
+    return path
+
+
+def _blacken_other_monitors(dw, monitors, target_id):
+    """Puts a solid black image on every non-target monitor (skipping those
+    that already show it, to avoid needless repaints)."""
+    for monitor_id, rect in monitors:
+        if monitor_id == target_id:
+            continue
+        black = _black_image((rect.right - rect.left, rect.bottom - rect.top))
+        try:
+            if dw.GetWallpaper(monitor_id) != str(black):
+                dw.SetWallpaper(monitor_id, str(black))
+        except Exception:
+            pass
 
 
 def _font(size, bold=False):
@@ -222,13 +235,24 @@ def update(snapshot):
     """
     _toggle[0] = not _toggle[0]
     path = _DATA_DIR / f"wallpaper_{'a' if _toggle[0] else 'b'}.png"
-    target = _pick_monitor()
+    try:
+        _set_dpi_aware()
+        dw = _desktop_wallpaper()
+        monitors = _monitors(dw)
+        target = _pick_monitor(monitors)
+    except Exception:
+        dw, monitors, target = None, [], None
     if target:
         monitor_id, size = target
         render(snapshot, path, size=size)
         _backup_original()
-        if _set_monitor_wallpaper(monitor_id, path):
+        try:
+            dw.SetWallpaper(monitor_id, str(path))
+            if getattr(config, "WALLPAPER_OTHERS", "keep").lower() == "black":
+                _blacken_other_monitors(dw, monitors, monitor_id)
             return
+        except Exception:
+            pass
     # "all" configured, or the per-monitor COM route failed
     render(snapshot, path)
     set_wallpaper(path)

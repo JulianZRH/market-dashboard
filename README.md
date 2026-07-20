@@ -1,8 +1,9 @@
 # Market Overview Dashboard
 
 A lightweight local dashboard that pulls market data from **Yahoo Finance**,
-the **ZKB finance portal** and **investing.com** every 15 minutes and
-displays it in the browser, segregated into asset classes:
+the **ZKB finance portal** and **investing.com** every minute
+(`REFRESH_MINUTES` in `config.py`) and displays it in the browser or as
+desktop wallpaper, segregated into asset classes:
 
 | Asset class | Contents | Source |
 |---|---|---|
@@ -35,7 +36,7 @@ Each instrument shows **Last**, **1d change** and **YTD change**
 
 ## Quick start
 
-Two ways to run it — both refresh every 15 minutes:
+Two ways to run it — both refresh every `REFRESH_MINUTES` (default 1 min):
 
 - **Browser:** double-click **`start_dashboard.bat`** (or the *Market
   Dashboard* desktop shortcut) — serves http://localhost:8050.
@@ -50,10 +51,12 @@ Two ways to run it — both refresh every 15 minutes:
   - `WALLPAPER_MONITOR` in `config.py` selects the target monitor:
     `"left"` (default), `"right"` or `"all"`. With left/right only that
     monitor is repainted (via the per-monitor `IDesktopWallpaper` COM
-    API); the other keeps its own wallpaper.
+    API). `WALLPAPER_OTHERS` controls the remaining monitors:
+    `"black"` (default) paints them plain black, `"keep"` leaves them
+    untouched.
   - Alternative without a running console: `app.py --wallpaper-once`
     fetches once, repaints the wallpaper and exits — suitable for a
-    Windows Task Scheduler job every 15 minutes.
+    recurring Windows Task Scheduler job.
 
 On first run either launcher creates a `.venv` and installs the
 requirements automatically; afterwards they start instantly.
