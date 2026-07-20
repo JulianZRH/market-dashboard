@@ -84,7 +84,13 @@ def _port_in_use(port: int) -> bool:
 
 
 if __name__ == "__main__":
-    if "--wallpaper" in sys.argv:
+    if "--wallpaper-once" in sys.argv:
+        # single fetch + repaint, then exit (for Windows Task Scheduler)
+        _state["snapshot"] = fetcher.fetch_snapshot()
+        _SNAPSHOT_FILE.parent.mkdir(exist_ok=True)
+        _SNAPSHOT_FILE.write_text(json.dumps(_state["snapshot"]), encoding="utf-8")
+        _apply_wallpaper()
+    elif "--wallpaper" in sys.argv:
         # wallpaper mode: no server, no browser - just refresh + repaint
         print("Market Overview in wallpaper mode "
               f"(desktop background, refresh every {config.REFRESH_MINUTES} min)")

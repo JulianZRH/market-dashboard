@@ -30,6 +30,7 @@ REFRESH_MINUTES = 15        # background data refresh interval
 PORT = 8050                 # dashboard served at http://localhost:8050
 PAGE_RELOAD_SECONDS = 60    # how often the browser re-renders the cached data
 STALE_AFTER_DAYS = 3        # show "as of <date>" when data is older than this
+WALLPAPER_MONITOR = "left"  # wallpaper mode: "left", "right" or "all" monitors
 
 ASSET_CLASSES = {
     "Equity": [

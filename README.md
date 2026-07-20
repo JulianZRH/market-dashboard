@@ -47,6 +47,13 @@ Two ways to run it — both refresh every 15 minutes:
   previous wallpaper path is backed up to `data\original_wallpaper.txt`
   — restore it any time via Windows Settings > Personalisation >
   Background.
+  - `WALLPAPER_MONITOR` in `config.py` selects the target monitor:
+    `"left"` (default), `"right"` or `"all"`. With left/right only that
+    monitor is repainted (via the per-monitor `IDesktopWallpaper` COM
+    API); the other keeps its own wallpaper.
+  - Alternative without a running console: `app.py --wallpaper-once`
+    fetches once, repaints the wallpaper and exits — suitable for a
+    Windows Task Scheduler job every 15 minutes.
 
 On first run either launcher creates a `.venv` and installs the
 requirements automatically; afterwards they start instantly.
