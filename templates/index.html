@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="{{ page_reload_seconds }}">
+<title>Market Overview</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --card: #171e26;
+    --border: #232d38;
+    --text: #dbe4ee;
+    --muted: #7a8894;
+    --accent: #4da3ff;
+    --pos: #35c07e;
+    --neg: #e5605e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  h1 { margin: 0; font-size: 1.5rem; font-weight: 600; }
+  .meta { color: var(--muted); font-size: 0.85rem; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+  }
+  .card h2 {
+    margin: 0 0 10px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th {
+    text-align: right;
+    color: var(--muted);
+    font-weight: 500;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  th:first-child, td:first-child { text-align: left; }
+  td { padding: 5px 8px; border-bottom: 1px solid var(--border); text-align: right; }
+  tr:last-child td { border-bottom: none; }
+  td.name { font-weight: 500; }
+  td .note { display: block; color: var(--muted); font-size: 0.72rem; font-weight: 400; }
+  td.ccy { color: var(--muted); }
+  .pos { color: var(--pos); }
+  .neg { color: var(--neg); }
+  .flat { color: var(--muted); }
+  .banner {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    text-align: center;
+    color: var(--muted);
+  }
+  .banner.error { border-color: var(--neg); color: var(--neg); white-space: pre-wrap; text-align: left; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Market Overview</h1>
+  <div class="meta">
+    {% if snapshot %}
+      data as of {{ snapshot.updated }} &middot; auto-refresh every {{ refresh_minutes }} min
+    {% else %}
+      first data load in progress &hellip;
+    {% endif %}
+  </div>
+</header>
+
+{% if error %}
+  <div class="banner error">Last refresh failed:&#10;{{ error }}</div>
+{% elif not snapshot %}
+  <div class="banner">Fetching data from Yahoo Finance &hellip; this page reloads automatically.</div>
+{% endif %}
+
+{% if snapshot %}
+<div class="grid">
+  {% for class_name, rows in snapshot.classes.items() %}
+  <div class="card">
+    <h2>{{ class_name }}</h2>
+    <table>
+      <tr><th>Instrument</th><th>Ccy</th><th>Last</th><th>1d</th><th>YTD</th></tr>
+      {% for r in rows %}
+      <tr>
+        <td class="name">{{ r.name }}{% if r.note %}<span class="note">{{ r.note }}</span>{% endif %}</td>
+        <td class="ccy">{{ r.ccy }}</td>
+        <td>{{ r.value }}</td>
+        <td class="{{ r.chg_1d.cls }}">{{ r.chg_1d.text }}</td>
+        <td class="{{ r.chg_ytd.cls }}">{{ r.chg_ytd.text }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+</body>
+</html>
