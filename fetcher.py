@@ -67,6 +67,7 @@ def _empty_row(inst) -> dict:
         "note": inst.get("note", ""),
         "value": "–",
         "asof": "",
+        "next": "",  # next central-bank meeting date (policy-rate rows only)
         "chg_1d": {"text": "–", "cls": "flat"},
         "chg_ytd": {"text": "–", "cls": "flat"},
     }
@@ -160,6 +161,7 @@ def _cbrate_row(inst, cb_rates) -> dict:
         row["note"] = f"central-bank scrape failed ({inst['bank']})"
         return row
     row["value"] = _fmt_value(info["rate"], is_yield=True)
+    row["next"] = info["next"]
     parts = []
     if info["last_change"]:
         parts.append(f"last change {info['last_change']}")
@@ -200,12 +202,14 @@ def _submit_all(executor) -> dict:
     for instruments in config.ASSET_CLASSES.values():
         for inst in instruments:
             source = inst.get("source", "yahoo")
-            if source == "zkb" and "zkb" not in futures:
-                futures["zkb"] = executor.submit(_timed("zkb", zkb.swap_rates))
-            elif source == "cbrate" and "cbrate" not in futures:
+            # any row tagged with a bank (cbrate rows, EFFR) needs the
+            # central-bank scrape for its rate / next-meeting date
+            if inst.get("bank") and "cbrate" not in futures:
                 futures["cbrate"] = executor.submit(
                     _timed("cbrate", investing.central_bank_rates)
                 )
+            if source == "zkb" and "zkb" not in futures:
+                futures["zkb"] = executor.submit(_timed("zkb", zkb.swap_rates))
             elif source == "fred":
                 key = ("fred", inst["series"])
                 if key not in futures:
@@ -269,7 +273,13 @@ def fetch_snapshot() -> dict:
                 rows.append(_cbrate_row(inst, cb_rates))
             elif source == "fred":
                 # published T+2 -> only flag as stale beyond the normal lag
-                rows.append(_quote_row(inst, results[("fred", inst["series"])], stale_days=5))
+                row = _quote_row(inst, results[("fred", inst["series"])], stale_days=5)
+                bank = (cb_rates or {}).get(inst.get("bank"))
+                if bank and bank["next"]:
+                    row["next"] = bank["next"]
+                    sep = " · " if row["note"] else ""
+                    row["note"] = f"{row['note']}{sep}next {bank['next']}"
+                rows.append(row)
             elif source == "westmetall":
                 # EOD settlement (T-1) -> allow for weekends before flagging
                 rows.append(_quote_row(inst, results[("westmetall", inst["field"])], stale_days=5))

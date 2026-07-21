@@ -63,7 +63,8 @@ ASSET_CLASSES = {
     # ZKB's table starts at 2 years, so 2Y stands in for the 1Y bucket.
     "Rates (policy + swaps)": [
         {"name": "Effective Federal Funds Rate", "series": "EFFR", "ccy": "USD",
-         "type": "yield", "source": "fred", "note": "NY Fed via FRED, published T+2"},
+         "type": "yield", "source": "fred", "bank": "FED",
+         "note": "NY Fed via FRED, published T+2"},
         {"name": "USD 2Y",  "swap": "USD2",  "ccy": "USD", "type": "yield", "source": "zkb"},
         {"name": "USD 3Y",  "swap": "USD3",  "ccy": "USD", "type": "yield", "source": "zkb"},
         {"name": "USD 5Y",  "swap": "USD5",  "ccy": "USD", "type": "yield", "source": "zkb"},

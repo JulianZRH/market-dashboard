@@ -143,9 +143,11 @@ def _font(size, bold=False):
 def _draw_card(d, x, y, w, class_name, rows, s, fonts):
     pad = int(14 * s)
     row_h = int(23 * s)
+    sub_h = int(15 * s)  # extra height for rows with a "next meeting" line
     title_h = int(30 * s)
     head_h = int(18 * s)
-    h = title_h + head_h + int(2 * s) + len(rows) * row_h + 2 * pad
+    h = (title_h + head_h + int(2 * s) + len(rows) * row_h
+         + sum(sub_h for r in rows if r.get("next")) + 2 * pad)
     d.rounded_rectangle([x, y, x + w, y + h], radius=int(10 * s),
                         fill=_CARD, outline=_BORDER, width=max(1, int(s)))
     d.text((x + pad, y + pad), class_name, font=fonts["title"], fill=_ACCENT)
@@ -172,6 +174,10 @@ def _draw_card(d, x, y, w, class_name, rows, s, fonts):
             d.text((right_x - d.textlength(text, font=fonts["row"]), ty),
                    text, font=fonts["row"], fill=color)
         ty += row_h
+        if r.get("next"):
+            d.text((x + pad, ty - int(4 * s)), f"next meeting {r['next']}",
+                   font=fonts["small"], fill=_MUTED)
+            ty += sub_h
     return h
 
 
