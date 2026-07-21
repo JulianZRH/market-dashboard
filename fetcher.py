@@ -78,12 +78,33 @@ def _age_days(asof) -> int:
     return (date.today() - asof).days
 
 
+def _live_quote(ticker: str):
+    """Yahoo's bulk download sometimes has no close for the latest session
+    (thin names like LEON.SW get a NaN row); fast_info still carries the
+    real last trade and previous close."""
+    try:
+        info = yf.Ticker(ticker).fast_info
+        last, prev = info.get("lastPrice"), info.get("previousClose")
+        if last is not None and prev is not None:
+            return float(last), float(prev)
+    except Exception:
+        pass
+    return None
+
+
 def _yahoo_row(inst, data, multi, current_year) -> dict:
     row = _empty_row(inst)
-    closes = _closes_for(data, inst["ticker"], multi) * inst.get("scale", 1)
+    scale = inst.get("scale", 1)
+    closes = _closes_for(data, inst["ticker"], multi) * scale
     if len(closes) >= 2:
         is_yield = inst["type"] == "yield"
         last, prev = closes.iloc[-1], closes.iloc[-2]
+        if closes.index[-1] < data.index.max():
+            live = _live_quote(inst["ticker"])
+            if live:
+                last, prev = live[0] * scale, live[1] * scale
+            else:
+                row["asof"] = f"as of {closes.index[-1]:%Y-%m-%d}"
         prior_year = closes[closes.index.year < current_year]
         ytd_base = prior_year.iloc[-1] if len(prior_year) else closes.iloc[0]
         row["value"] = _fmt_value(last, is_yield, inst.get("decimals"))

@@ -144,13 +144,20 @@ def _draw_card(d, x, y, w, class_name, rows, s, fonts):
     pad = int(14 * s)
     row_h = int(23 * s)
     title_h = int(30 * s)
-    h = title_h + len(rows) * row_h + 2 * pad
+    head_h = int(18 * s)
+    h = title_h + head_h + int(2 * s) + len(rows) * row_h + 2 * pad
     d.rounded_rectangle([x, y, x + w, y + h], radius=int(10 * s),
                         fill=_CARD, outline=_BORDER, width=max(1, int(s)))
     d.text((x + pad, y + pad), class_name, font=fonts["title"], fill=_ACCENT)
     # right edges of the three numeric columns
     x_val, x_1d, x_ytd = x + w * 0.58, x + w * 0.79, x + w - pad
-    ty = y + pad + title_h
+    hy = y + pad + title_h
+    for text, right_x in [("Last", x_val), ("1d", x_1d), ("YTD", x_ytd)]:
+        d.text((right_x - d.textlength(text, font=fonts["small"]), hy),
+               text, font=fonts["small"], fill=_MUTED)
+    d.line([x + pad, hy + head_h - int(3 * s), x + w - pad, hy + head_h - int(3 * s)],
+           fill=_BORDER, width=max(1, int(s)))
+    ty = hy + head_h + int(2 * s)
     for r in rows:
         d.text((x + pad, ty), r["name"], font=fonts["row"], fill=_TEXT)
         name_w = d.textlength(r["name"], font=fonts["row"])
