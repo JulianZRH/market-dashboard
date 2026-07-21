@@ -32,22 +32,31 @@ PAGE_RELOAD_SECONDS = 60    # how often the browser re-renders the cached data
 STALE_AFTER_DAYS = 3        # show "as of <date>" when data is older than this
 WALLPAPER_MONITOR = "left"  # wallpaper mode: "left", "right" or "all" monitors
 WALLPAPER_OTHERS = "black"  # non-target monitors: "black" or "keep" their wallpaper
+# wallpaper mode: {card: card it must sit directly below} - otherwise cards
+# are packed into whichever column is currently shortest
+WALLPAPER_STACK = {"Equity Single": "Equity Index"}
 
 ASSET_CLASSES = {
-    "Equity": [
-        {"name": "S&P 500",       "ticker": "^GSPC",     "ccy": "USD", "type": "price"},
-        {"name": "Nasdaq 100",    "ticker": "^NDX",      "ccy": "USD", "type": "price"},
-        {"name": "Euro Stoxx 50", "ticker": "^STOXX50E", "ccy": "EUR", "type": "price"},
-        {"name": "DAX",           "ticker": "^GDAXI",    "ccy": "EUR", "type": "price"},
-        {"name": "SMI",           "ticker": "^SSMI",     "ccy": "CHF", "type": "price"},
-        {"name": "FTSE 100",      "ticker": "^FTSE",     "ccy": "GBP", "type": "price"},
-        {"name": "CAC 40",        "ticker": "^FCHI",     "ccy": "EUR", "type": "price"},
-        {"name": "Nikkei 225",    "ticker": "^N225",     "ccy": "JPY", "type": "price"},
-        {"name": "Hang Seng",     "ticker": "^HSI",      "ccy": "HKD", "type": "price"},
+    "Equity Index": [
         {"name": "World (VT)",    "ticker": "VT",        "ccy": "USD", "type": "price",
          "note": "Vanguard Total World ETF"},
+        {"name": "S&P 500",       "ticker": "^GSPC",     "ccy": "USD", "type": "price"},
+        {"name": "Euro Stoxx 50", "ticker": "^STOXX50E", "ccy": "EUR", "type": "price"},
+        {"name": "SMI",           "ticker": "^SSMI",     "ccy": "CHF", "type": "price"},
+        {"name": "Nikkei 225",    "ticker": "^N225",     "ccy": "JPY", "type": "price"},
+        {"name": "Nasdaq 100",    "ticker": "^NDX",      "ccy": "USD", "type": "price"},
+        {"name": "DAX",           "ticker": "^GDAXI",    "ccy": "EUR", "type": "price"},
+        {"name": "FTSE 100",      "ticker": "^FTSE",     "ccy": "GBP", "type": "price"},
+        {"name": "Hang Seng",     "ticker": "^HSI",      "ccy": "HKD", "type": "price"},
+    ],
+    "Equity Single": [
         {"name": "Leonteq",       "ticker": "LEON.SW",   "ccy": "CHF", "type": "price",
          "note": "Leonteq Securities AG (SIX)"},
+        {"name": "SpaceX",        "ticker": "SPCX",      "ccy": "USD", "type": "price",
+         "note": "Space Exploration Technologies (Nasdaq)"},
+        {"name": "NVIDIA",        "ticker": "NVDA",      "ccy": "USD", "type": "price"},
+        {"name": "Rheinmetall",   "ticker": "RHM.DE",    "ccy": "EUR", "type": "price"},
+        {"name": "Take-Two Interactive", "ticker": "TTWO", "ccy": "USD", "type": "price"},
     ],
     # Central-bank policy rates (investing.com/central-banks/, 12h cache)
     # plus interest rate swaps from the ZKB finance portal.

@@ -198,8 +198,15 @@ def render(snapshot, out_path: Path, size=None):
     columns = 4
     col_w = (width - 2 * margin - (columns - 1) * gap) // columns
     col_y = [margin + int(56 * s)] * columns
+    stack = getattr(config, "WALLPAPER_STACK", {})
+    placed = {}  # class name -> column it landed in
     for class_name, rows in snapshot["classes"].items():
-        col = min(range(columns), key=lambda i: col_y[i])
+        anchor = stack.get(class_name)
+        if anchor in placed:
+            col = placed[anchor]
+        else:
+            col = min(range(columns), key=lambda i: col_y[i])
+        placed[class_name] = col
         x = margin + col * (col_w + gap)
         card_h = _draw_card(d, x, col_y[col], col_w, class_name, rows, s, fonts)
         col_y[col] += card_h + gap
