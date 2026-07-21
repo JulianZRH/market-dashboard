@@ -96,6 +96,48 @@ def central_bank_rates() -> dict:
     return out
 
 
+# (fetched_time, data); like the policy rates, refreshed at most every 12h
+_fed_forecast_cache = None
+
+
+def fed_rate_forecast():
+    """Scrapes the investing.com Fed Rate Monitor (Fed-funds-futures-implied
+    probabilities). Returns the most likely outcome of the next FOMC meeting:
+    {"date": "Jul 29, 2026", "range": "3.50–3.75", "prob": 73.4}.
+
+    No equivalent free source exists for ECB/SNB, so this is Fed-only.
+    """
+    global _fed_forecast_cache
+    if _fed_forecast_cache and time.time() - _fed_forecast_cache[0] < _CB_TTL_SECONDS:
+        return _fed_forecast_cache[1]
+    r = requests.get(
+        "https://www.investing.com/central-banks/fed-rate-monitor",
+        impersonate="chrome",
+        timeout=25,
+    )
+    r.raise_for_status()
+    html = r.text
+    # cards are one per meeting; card 0 is the next meeting
+    end = html.find('id="cardName_1"')
+    section = html[: end if end != -1 else len(html)]
+    date_m = re.search(r'id="cardName_0">\s*([^<]+?)\s*<', section)
+    items = re.findall(
+        r'percfedRateItem">\s*<span>([\d.]+\s*-\s*[\d.]+)</span>.*?<span>([\d.]+)%</span>',
+        section,
+        re.S,
+    )
+    if not items:
+        return None
+    rng, prob = max(items, key=lambda item: float(item[1]))
+    out = {
+        "date": date_m.group(1) if date_m else "",
+        "range": re.sub(r"\s*-\s*", "–", rng),
+        "prob": float(prob),
+    }
+    _fed_forecast_cache = (time.time(), out)
+    return out
+
+
 def quote(pair_id: int):
     hourly = _get_chart(pair_id, "PT1H", "P1M")
     if not hourly:

@@ -208,6 +208,10 @@ def _submit_all(executor) -> dict:
                 futures["cbrate"] = executor.submit(
                     _timed("cbrate", investing.central_bank_rates)
                 )
+            if inst.get("bank") == "FED" and "fed_forecast" not in futures:
+                futures["fed_forecast"] = executor.submit(
+                    _timed("fed forecast", investing.fed_rate_forecast)
+                )
             if source == "zkb" and "zkb" not in futures:
                 futures["zkb"] = executor.submit(_timed("zkb", zkb.swap_rates))
             elif source == "fred":
@@ -262,6 +266,10 @@ def fetch_snapshot() -> dict:
     if isinstance(cb_rates, Exception):
         cb_rates = None
 
+    fed_forecast = results.get("fed_forecast")
+    if isinstance(fed_forecast, Exception):
+        fed_forecast = None
+
     classes = {}
     for class_name, instruments in config.ASSET_CLASSES.items():
         rows = []
@@ -276,9 +284,13 @@ def fetch_snapshot() -> dict:
                 row = _quote_row(inst, results[("fred", inst["series"])], stale_days=5)
                 bank = (cb_rates or {}).get(inst.get("bank"))
                 if bank and bank["next"]:
-                    row["next"] = bank["next"]
+                    nxt = bank["next"]
+                    if inst.get("bank") == "FED" and fed_forecast:
+                        nxt += (f" · {fed_forecast['range']}% expected"
+                                f" ({fed_forecast['prob']:.0f}%)")
+                    row["next"] = nxt
                     sep = " · " if row["note"] else ""
-                    row["note"] = f"{row['note']}{sep}next {bank['next']}"
+                    row["note"] = f"{row['note']}{sep}next {nxt}"
                 rows.append(row)
             elif source == "westmetall":
                 # EOD settlement (T-1) -> allow for weekends before flagging
