@@ -113,14 +113,16 @@ ASSET_CLASSES = {
         {"name": "EUR/CHF", "ticker": "EURCHF=X", "ccy": "CHF", "type": "price", "decimals": 4},
         {"name": "EUR/USD", "ticker": "EURUSD=X", "ccy": "USD", "type": "price", "decimals": 4},
     ],
-    "Credit": [
-        {"name": "IHYG", "ticker": "IHYG.L", "ccy": "EUR", "type": "price",
-         "note": "iShares EUR High Yield Corp Bond ETF"},
-        {"name": "IEAC", "ticker": "IEAC.L", "ccy": "EUR", "type": "price",
-         "note": "iShares EUR Corp Bond ETF"},
-        {"name": "HYG", "ticker": "HYG", "ccy": "USD", "type": "price",
-         "note": "iShares USD High Yield Corp Bond ETF"},
+    "Credit IG": [
         {"name": "LQD", "ticker": "LQD", "ccy": "USD", "type": "price",
          "note": "iShares USD IG Corp Bond ETF"},
+        {"name": "IEAC", "ticker": "IEAC.L", "ccy": "EUR", "type": "price",
+         "note": "iShares EUR IG Corp Bond ETF"},
+    ],
+    "Credit HY": [
+        {"name": "HYG", "ticker": "HYG", "ccy": "USD", "type": "price",
+         "note": "iShares USD High Yield Corp Bond ETF"},
+        {"name": "IHYG", "ticker": "IHYG.L", "ccy": "EUR", "type": "price",
+         "note": "iShares EUR High Yield Corp Bond ETF"},
     ],
 }
