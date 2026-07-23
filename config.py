@@ -15,15 +15,19 @@ Instrument fields:
     bank        central-bank code on investing.com/central-banks/ (source "cbrate")
     series      FRED series id, e.g. "EFFR"     (source "fred")
     field       westmetall table field, e.g. "LME_Ni_cash" (source "westmetall")
-    pair_id     investing.com numeric pair id   (source "investing", currently unused)
+    pair_id     investing.com numeric pair id; on "zkb" rows it names the
+                matching IRS instrument used for daily-cached change bases
     scale       optional multiplier applied to the raw quote (default 1)
     decimals    optional number of decimals for the Last column
     note        small-print remark shown under the instrument name
 
 Swap rates come from the ZKB finance portal (zkb-finance.mdgms.com), which
-serves all currencies/maturities in one fast page load. investing.com is
-currently only used for the (12h-cached) central-bank policy rates; its
-slow per-instrument chart API is not used any more.
+serves all currencies/maturities in one fast page load but has no history.
+1d/YTD change bases come from the locally accumulated ZKB history where it
+already reaches, otherwise from investing.com's matching IRS instruments
+(fetched once a day in a background thread - the chart API is too slow for
+the per-minute refresh). investing.com also serves the (12h-cached)
+central-bank policy rates.
 """
 
 REFRESH_MINUTES = 1         # background data refresh interval
@@ -65,20 +69,20 @@ ASSET_CLASSES = {
         {"name": "Effective Federal Funds Rate", "series": "EFFR", "ccy": "USD",
          "type": "yield", "source": "fred", "bank": "FED",
          "note": "NY Fed via FRED, published T+2"},
-        {"name": "USD 2Y",  "swap": "USD2",  "ccy": "USD", "type": "yield", "source": "zkb"},
-        {"name": "USD 3Y",  "swap": "USD3",  "ccy": "USD", "type": "yield", "source": "zkb"},
-        {"name": "USD 5Y",  "swap": "USD5",  "ccy": "USD", "type": "yield", "source": "zkb"},
-        {"name": "USD 10Y", "swap": "USD10", "ccy": "USD", "type": "yield", "source": "zkb"},
+        {"name": "USD 2Y",  "swap": "USD2",  "pair_id": 1122446, "ccy": "USD", "type": "yield", "source": "zkb"},
+        {"name": "USD 3Y",  "swap": "USD3",  "pair_id": 1122447, "ccy": "USD", "type": "yield", "source": "zkb"},
+        {"name": "USD 5Y",  "swap": "USD5",  "pair_id": 1122449, "ccy": "USD", "type": "yield", "source": "zkb"},
+        {"name": "USD 10Y", "swap": "USD10", "pair_id": 1122453, "ccy": "USD", "type": "yield", "source": "zkb"},
         {"name": "ECB (main refi)", "bank": "ECB", "ccy": "EUR", "type": "yield", "source": "cbrate"},
-        {"name": "EUR 2Y",  "swap": "EUR2",  "ccy": "EUR", "type": "yield", "source": "zkb"},
-        {"name": "EUR 3Y",  "swap": "EUR3",  "ccy": "EUR", "type": "yield", "source": "zkb"},
-        {"name": "EUR 5Y",  "swap": "EUR5",  "ccy": "EUR", "type": "yield", "source": "zkb"},
-        {"name": "EUR 10Y", "swap": "EUR10", "ccy": "EUR", "type": "yield", "source": "zkb"},
+        {"name": "EUR 2Y",  "swap": "EUR2",  "pair_id": 1156453, "ccy": "EUR", "type": "yield", "source": "zkb"},
+        {"name": "EUR 3Y",  "swap": "EUR3",  "pair_id": 1156454, "ccy": "EUR", "type": "yield", "source": "zkb"},
+        {"name": "EUR 5Y",  "swap": "EUR5",  "pair_id": 1156456, "ccy": "EUR", "type": "yield", "source": "zkb"},
+        {"name": "EUR 10Y", "swap": "EUR10", "pair_id": 1156461, "ccy": "EUR", "type": "yield", "source": "zkb"},
         {"name": "SNB policy rate", "bank": "SNB", "ccy": "CHF", "type": "yield", "source": "cbrate"},
-        {"name": "CHF 2Y",  "swap": "CHF2",  "ccy": "CHF", "type": "yield", "source": "zkb"},
-        {"name": "CHF 3Y",  "swap": "CHF3",  "ccy": "CHF", "type": "yield", "source": "zkb"},
-        {"name": "CHF 5Y",  "swap": "CHF5",  "ccy": "CHF", "type": "yield", "source": "zkb"},
-        {"name": "CHF 10Y", "swap": "CHF10", "ccy": "CHF", "type": "yield", "source": "zkb"},
+        {"name": "CHF 2Y",  "swap": "CHF2",  "pair_id": 1156471, "ccy": "CHF", "type": "yield", "source": "zkb"},
+        {"name": "CHF 3Y",  "swap": "CHF3",  "pair_id": 1156472, "ccy": "CHF", "type": "yield", "source": "zkb"},
+        {"name": "CHF 5Y",  "swap": "CHF5",  "pair_id": 1156474, "ccy": "CHF", "type": "yield", "source": "zkb"},
+        {"name": "CHF 10Y", "swap": "CHF10", "pair_id": 1156479, "ccy": "CHF", "type": "yield", "source": "zkb"},
     ],
     "Precious Metals": [
         {"name": "Gold",      "ticker": "GC=F", "ccy": "USD", "type": "price"},

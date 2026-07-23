@@ -9,7 +9,9 @@ return PNG images (no machine-readable history). Therefore this module
 keeps its own daily history in data/swap_history.json: every refresh
 records today's values, and 1d / YTD changes are computed against that
 accumulated history (1d appears from the second day on, YTD once the
-history reaches back to the previous year-end).
+history reaches back to the previous year-end). Until the local history
+covers a bucket, the fetcher falls back to investing.com's matching IRS
+series (investing.swap_bases).
 """
 
 import json

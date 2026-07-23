@@ -140,17 +140,29 @@ def _quote_row(inst, result, stale_days=None) -> dict:
     return row
 
 
-def _zkb_row(inst, swap_rates, swap_history) -> dict:
-    """A swap-rate row from the ZKB table + locally accumulated history."""
+def _zkb_row(inst, swap_rates, swap_history, invest_bases) -> dict:
+    """A swap-rate row: live level from the ZKB table, change bases from the
+    locally accumulated ZKB history where it already reaches, otherwise from
+    investing.com's matching IRS series (YTD needs a recorded year-end, which
+    the local history won't have before next January). Investing levels sit a
+    few bp off ZKB's, so fallback changes are computed within the investing
+    series, never across the two sources."""
     row = _empty_row(inst)
     rate = (swap_rates or {}).get(inst["swap"])
     if rate is None:
         row["note"] = f"ZKB fetch failed ({inst['swap']})"
         return row
     bases = zkb.change_bases(swap_history or {}, inst["swap"])
+    inv = (invest_bases or {}).get(inst["swap"], {})
     row["value"] = _fmt_value(rate, is_yield=True)
-    row["chg_1d"] = _fmt_change(rate, bases["prev"], is_yield=True)
-    row["chg_ytd"] = _fmt_change(rate, bases["ytd_base"], is_yield=True)
+    if bases["prev"] is not None:
+        row["chg_1d"] = _fmt_change(rate, bases["prev"], is_yield=True)
+    elif inv.get("prev") is not None:
+        row["chg_1d"] = _fmt_change(inv["last"], inv["prev"], is_yield=True)
+    if bases["ytd_base"] is not None:
+        row["chg_ytd"] = _fmt_change(rate, bases["ytd_base"], is_yield=True)
+    elif inv.get("ytd_base") is not None:
+        row["chg_ytd"] = _fmt_change(inv["last"], inv["ytd_base"], is_yield=True)
     return row
 
 
@@ -262,6 +274,16 @@ def fetch_snapshot() -> dict:
     else:
         swap_rates = None
 
+    # non-blocking: returns the last completed daily fetch and refreshes
+    # in its own background thread when that fetch is stale
+    swap_pair_ids = {
+        inst["swap"]: inst["pair_id"]
+        for instruments in config.ASSET_CLASSES.values()
+        for inst in instruments
+        if inst.get("source") == "zkb" and inst.get("pair_id")
+    }
+    invest_bases = investing.swap_bases(swap_pair_ids) if swap_pair_ids else {}
+
     cb_rates = results.get("cbrate")
     if isinstance(cb_rates, Exception):
         cb_rates = None
@@ -276,7 +298,7 @@ def fetch_snapshot() -> dict:
         for inst in instruments:
             source = inst.get("source", "yahoo")
             if source == "zkb":
-                rows.append(_zkb_row(inst, swap_rates, swap_history))
+                rows.append(_zkb_row(inst, swap_rates, swap_history, invest_bases))
             elif source == "cbrate":
                 rows.append(_cbrate_row(inst, cb_rates))
             elif source == "fred":

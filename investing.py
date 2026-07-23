@@ -11,11 +11,20 @@ quote(pair_id) returns:
     prev      final value of the previous day with data (basis for 1d change)
     ytd_base  final value of the previous year (basis for YTD change)
     asof      UTC datetime of the last data point (swaps update irregularly)
+
+Besides the central-bank scrapes, the chart API currently serves only
+swap_bases(): daily-cached 1d/YTD change bases for the ZKB swap rows.
+NB: investing's swap levels sit a few bp off ZKB's (USD ~0.5, EUR ~1-4,
+CHF ~6-7; different floating-leg conventions), so changes must always be
+computed within one source's series, never across the two.
 """
 
+import json
 import re
+import threading
 import time
 from datetime import date, datetime, timezone
+from pathlib import Path
 
 from curl_cffi import requests
 
@@ -136,6 +145,64 @@ def fed_rate_forecast():
     }
     _fed_forecast_cache = (time.time(), out)
     return out
+
+
+# Daily change bases for the ZKB swap rows (their portal has no history).
+# The chart API needs ~2 throttled calls per instrument - far too slow for
+# the per-minute refresh - so the bases are fetched at most once per day in
+# a background thread and persisted; readers always get the last completed
+# fetch (possibly yesterday's, which is fine for daily bases).
+_BASES_FILE = Path(__file__).resolve().parent / "data" / "swap_bases.json"
+_bases_lock = threading.Lock()
+_bases_refreshing = False
+
+
+def _refresh_swap_bases(pair_ids: dict):
+    global _bases_refreshing
+    try:
+        bases = {}
+        for key, pair_id in pair_ids.items():
+            try:
+                q = quote(pair_id)
+            except Exception:
+                q = None
+            if q:
+                bases[key] = {
+                    "last": q["last"],
+                    "prev": q["prev"],
+                    "ytd_base": q["ytd_base"],
+                }
+        if bases:
+            _BASES_FILE.parent.mkdir(exist_ok=True)
+            _BASES_FILE.write_text(
+                json.dumps({"date": date.today().isoformat(), "bases": bases}, indent=1)
+            )
+            print(f"[fetch] swap bases: refreshed {len(bases)} instruments", flush=True)
+    finally:
+        with _bases_lock:
+            _bases_refreshing = False
+
+
+def swap_bases(pair_ids: dict) -> dict:
+    """Returns {"CHF2": {"last", "prev", "ytd_base"}, ...} from the newest
+    completed daily fetch and kicks off a background refresh when that fetch
+    is not from today. Never blocks; an empty dict means no fetch has
+    completed yet (first run of a fresh install)."""
+    global _bases_refreshing
+    stored = {}
+    if _BASES_FILE.exists():
+        try:
+            stored = json.loads(_BASES_FILE.read_text())
+        except ValueError:
+            stored = {}
+    if stored.get("date") != date.today().isoformat():
+        with _bases_lock:
+            if not _bases_refreshing:
+                _bases_refreshing = True
+                threading.Thread(
+                    target=_refresh_swap_bases, args=(dict(pair_ids),), daemon=True
+                ).start()
+    return stored.get("bases", {})
 
 
 def quote(pair_id: int):
