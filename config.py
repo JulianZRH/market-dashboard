@@ -33,7 +33,7 @@ WALLPAPER_MONITOR = "left"  # wallpaper mode: "left", "right" or "all" monitors
 WALLPAPER_OTHERS = "black"  # non-target monitors: "black" or "keep" their wallpaper
 # wallpaper mode: {card: card it must sit directly below} - otherwise cards
 # are packed into whichever column is currently shortest
-WALLPAPER_STACK = {"Equity Single": "Equity Index"}
+WALLPAPER_STACK = {"Equity Single": "Equity Index", "Credit HY": "Credit IG"}
 
 ASSET_CLASSES = {
     "Equity Index": [
