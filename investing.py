@@ -12,19 +12,17 @@ quote(pair_id) returns:
     ytd_base  final value of the previous year (basis for YTD change)
     asof      UTC datetime of the last data point (swaps update irregularly)
 
-Besides the central-bank scrapes, the chart API currently serves only
-swap_bases(): daily-cached 1d/YTD change bases for the ZKB swap rows.
-NB: investing's swap levels sit a few bp off ZKB's (USD ~0.5, EUR ~1-4,
-CHF ~6-7; different floating-leg conventions), so changes must always be
-computed within one source's series, never across the two.
+The swap rows draw last / 1d / YTD entirely from here (single source, so
+changes never mix conventions across providers). Quotes are cached for 15
+minutes: the dashboard refreshes every minute but the swaps are marked at
+most hourly, so refetching every cycle would just hammer the API - which is
+what made this source too slow back when every instrument came from it,
+uncached.
 """
 
-import json
 import re
-import threading
 import time
 from datetime import date, datetime, timezone
-from pathlib import Path
 
 from curl_cffi import requests
 
@@ -60,9 +58,10 @@ def _ytd_base(pair_id: int):
     cached = _ytd_cache.get(pair_id)
     if cached and cached[0] == today:
         return cached[1]
-    # period=P1Y comes back as ~53 weekly bars; the last bar dated before
-    # Jan 1 approximates the previous year's closing level.
-    points = _get_chart(pair_id, "P1D", "P1Y")
+    # P1D/P1Y returns only ~53 daily bars (~2.5 months) for OTC swaps, so
+    # daily data never reaches the prior year-end. Weekly bars cover the
+    # full year; the last bar starting before Jan 1 closes right at it.
+    points = _get_chart(pair_id, "P1W", "P1Y")
     prior = [close for ts, close in points if ts.year < today.year]
     base = prior[-1] if prior else (points[0][1] if points else None)
     _ytd_cache[pair_id] = (today, base)
@@ -147,73 +146,26 @@ def fed_rate_forecast():
     return out
 
 
-# Daily change bases for the ZKB swap rows (their portal has no history).
-# The chart API needs ~2 throttled calls per instrument - far too slow for
-# the per-minute refresh - so the bases are fetched at most once per day in
-# a background thread and persisted; readers always get the last completed
-# fetch (possibly yesterday's, which is fine for daily bases).
-_BASES_FILE = Path(__file__).resolve().parent / "data" / "swap_bases.json"
-_bases_lock = threading.Lock()
-_bases_refreshing = False
-
-
-def _refresh_swap_bases(pair_ids: dict):
-    global _bases_refreshing
-    try:
-        bases = {}
-        for key, pair_id in pair_ids.items():
-            try:
-                q = quote(pair_id)
-            except Exception:
-                q = None
-            if q:
-                bases[key] = {
-                    "last": q["last"],
-                    "prev": q["prev"],
-                    "ytd_base": q["ytd_base"],
-                }
-        if bases:
-            _BASES_FILE.parent.mkdir(exist_ok=True)
-            _BASES_FILE.write_text(
-                json.dumps({"date": date.today().isoformat(), "bases": bases}, indent=1)
-            )
-            print(f"[fetch] swap bases: refreshed {len(bases)} instruments", flush=True)
-    finally:
-        with _bases_lock:
-            _bases_refreshing = False
-
-
-def swap_bases(pair_ids: dict) -> dict:
-    """Returns {"CHF2": {"last", "prev", "ytd_base"}, ...} from the newest
-    completed daily fetch and kicks off a background refresh when that fetch
-    is not from today. Never blocks; an empty dict means no fetch has
-    completed yet (first run of a fresh install)."""
-    global _bases_refreshing
-    stored = {}
-    if _BASES_FILE.exists():
-        try:
-            stored = json.loads(_BASES_FILE.read_text())
-        except ValueError:
-            stored = {}
-    if stored.get("date") != date.today().isoformat():
-        with _bases_lock:
-            if not _bases_refreshing:
-                _bases_refreshing = True
-                threading.Thread(
-                    target=_refresh_swap_bases, args=(dict(pair_ids),), daemon=True
-                ).start()
-    return stored.get("bases", {})
+# pair_id -> (fetched_time, result); swaps mark hourly at most, so a 15-min
+# cache spares the API 14 of every 15 per-minute refreshes
+_QUOTE_TTL_SECONDS = 15 * 60
+_quote_cache = {}
 
 
 def quote(pair_id: int):
+    cached = _quote_cache.get(pair_id)
+    if cached and time.time() - cached[0] < _QUOTE_TTL_SECONDS:
+        return cached[1]
     hourly = _get_chart(pair_id, "PT1H", "P1M")
     if not hourly:
         return None
     asof, last = hourly[-1]
     prev_day = [close for ts, close in hourly if ts.date() < asof.date()]
-    return {
+    result = {
         "last": last,
         "prev": prev_day[-1] if prev_day else None,
         "ytd_base": _ytd_base(pair_id),
         "asof": asof,
     }
+    _quote_cache[pair_id] = (time.time(), result)
+    return result

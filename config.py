@@ -8,26 +8,21 @@ Instrument fields:
     ccy      currency label shown in the table
     type     "price" -> changes shown in %
              "yield" -> changes shown in basis points
-    source      "yahoo" (default), "zkb", "cbrate", "fred", "westmetall"
+    source      "yahoo" (default), "cbrate", "fred", "westmetall"
                 or "investing"
     ticker      Yahoo Finance symbol            (source "yahoo")
-    swap        ZKB swap key "<CCY><years>", e.g. "CHF2"   (source "zkb")
     bank        central-bank code on investing.com/central-banks/ (source "cbrate")
     series      FRED series id, e.g. "EFFR"     (source "fred")
     field       westmetall table field, e.g. "LME_Ni_cash" (source "westmetall")
-    pair_id     investing.com numeric pair id; on "zkb" rows it names the
-                matching IRS instrument used for daily-cached change bases
+    pair_id     investing.com numeric pair id   (source "investing")
     scale       optional multiplier applied to the raw quote (default 1)
     decimals    optional number of decimals for the Last column
     note        small-print remark shown under the instrument name
 
-Swap rates come from the ZKB finance portal (zkb-finance.mdgms.com), which
-serves all currencies/maturities in one fast page load but has no history.
-1d/YTD change bases come from the locally accumulated ZKB history where it
-already reaches, otherwise from investing.com's matching IRS instruments
-(fetched once a day in a background thread - the chart API is too slow for
-the per-minute refresh). investing.com also serves the (12h-cached)
-central-bank policy rates.
+Swap rates come from investing.com's IRS instruments (source "investing"),
+which carry full daily history so last / 1d / YTD all come from one place.
+Quotes are 15-min-cached in investing.py. investing.com also serves the
+(12h-cached) central-bank policy rates.
 """
 
 REFRESH_MINUTES = 1         # background data refresh interval
@@ -63,26 +58,25 @@ ASSET_CLASSES = {
         {"name": "Take-Two Interactive", "ticker": "TTWO", "ccy": "USD", "type": "price"},
     ],
     # Central-bank policy rates (investing.com/central-banks/, 12h cache)
-    # plus interest rate swaps from the ZKB finance portal.
-    # ZKB's table starts at 2 years, so 2Y stands in for the 1Y bucket.
+    # plus interest rate swaps from investing.com's IRS instruments.
     "Rates (policy + swaps)": [
         {"name": "Effective Federal Funds Rate", "series": "EFFR", "ccy": "USD",
          "type": "yield", "source": "fred", "bank": "FED",
          "note": "NY Fed via FRED, published T+2"},
-        {"name": "USD 2Y",  "swap": "USD2",  "pair_id": 1122446, "ccy": "USD", "type": "yield", "source": "zkb"},
-        {"name": "USD 3Y",  "swap": "USD3",  "pair_id": 1122447, "ccy": "USD", "type": "yield", "source": "zkb"},
-        {"name": "USD 5Y",  "swap": "USD5",  "pair_id": 1122449, "ccy": "USD", "type": "yield", "source": "zkb"},
-        {"name": "USD 10Y", "swap": "USD10", "pair_id": 1122453, "ccy": "USD", "type": "yield", "source": "zkb"},
+        {"name": "USD 2Y",  "pair_id": 1122446, "ccy": "USD", "type": "yield", "source": "investing"},
+        {"name": "USD 3Y",  "pair_id": 1122447, "ccy": "USD", "type": "yield", "source": "investing"},
+        {"name": "USD 5Y",  "pair_id": 1122449, "ccy": "USD", "type": "yield", "source": "investing"},
+        {"name": "USD 10Y", "pair_id": 1122453, "ccy": "USD", "type": "yield", "source": "investing"},
         {"name": "ECB (main refi)", "bank": "ECB", "ccy": "EUR", "type": "yield", "source": "cbrate"},
-        {"name": "EUR 2Y",  "swap": "EUR2",  "pair_id": 1156453, "ccy": "EUR", "type": "yield", "source": "zkb"},
-        {"name": "EUR 3Y",  "swap": "EUR3",  "pair_id": 1156454, "ccy": "EUR", "type": "yield", "source": "zkb"},
-        {"name": "EUR 5Y",  "swap": "EUR5",  "pair_id": 1156456, "ccy": "EUR", "type": "yield", "source": "zkb"},
-        {"name": "EUR 10Y", "swap": "EUR10", "pair_id": 1156461, "ccy": "EUR", "type": "yield", "source": "zkb"},
+        {"name": "EUR 2Y",  "pair_id": 1156453, "ccy": "EUR", "type": "yield", "source": "investing"},
+        {"name": "EUR 3Y",  "pair_id": 1156454, "ccy": "EUR", "type": "yield", "source": "investing"},
+        {"name": "EUR 5Y",  "pair_id": 1156456, "ccy": "EUR", "type": "yield", "source": "investing"},
+        {"name": "EUR 10Y", "pair_id": 1156461, "ccy": "EUR", "type": "yield", "source": "investing"},
         {"name": "SNB policy rate", "bank": "SNB", "ccy": "CHF", "type": "yield", "source": "cbrate"},
-        {"name": "CHF 2Y",  "swap": "CHF2",  "pair_id": 1156471, "ccy": "CHF", "type": "yield", "source": "zkb"},
-        {"name": "CHF 3Y",  "swap": "CHF3",  "pair_id": 1156472, "ccy": "CHF", "type": "yield", "source": "zkb"},
-        {"name": "CHF 5Y",  "swap": "CHF5",  "pair_id": 1156474, "ccy": "CHF", "type": "yield", "source": "zkb"},
-        {"name": "CHF 10Y", "swap": "CHF10", "pair_id": 1156479, "ccy": "CHF", "type": "yield", "source": "zkb"},
+        {"name": "CHF 2Y",  "pair_id": 1156471, "ccy": "CHF", "type": "yield", "source": "investing"},
+        {"name": "CHF 3Y",  "pair_id": 1156472, "ccy": "CHF", "type": "yield", "source": "investing"},
+        {"name": "CHF 5Y",  "pair_id": 1156474, "ccy": "CHF", "type": "yield", "source": "investing"},
+        {"name": "CHF 10Y", "pair_id": 1156479, "ccy": "CHF", "type": "yield", "source": "investing"},
     ],
     "Precious Metals": [
         {"name": "Gold",      "ticker": "GC=F", "ccy": "USD", "type": "price"},

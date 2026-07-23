@@ -1,8 +1,8 @@
 """Pulls quotes from all configured sources and shapes them for the template.
 
-Sources (Yahoo bulk download, ZKB swaps, FRED, westmetall, central-bank
-scrape) are independent, so they are fetched in parallel - the snapshot
-takes about as long as the slowest single source instead of the sum.
+Sources (Yahoo bulk download, investing.com swaps, FRED, westmetall,
+central-bank scrape) are independent, so they are fetched in parallel - the
+snapshot takes about as long as the slowest single source instead of the sum.
 """
 
 import time
@@ -16,7 +16,6 @@ import config
 import fred
 import investing
 import westmetall
-import zkb
 
 
 def _yahoo_tickers():
@@ -140,32 +139,6 @@ def _quote_row(inst, result, stale_days=None) -> dict:
     return row
 
 
-def _zkb_row(inst, swap_rates, swap_history, invest_bases) -> dict:
-    """A swap-rate row: live level from the ZKB table, change bases from the
-    locally accumulated ZKB history where it already reaches, otherwise from
-    investing.com's matching IRS series (YTD needs a recorded year-end, which
-    the local history won't have before next January). Investing levels sit a
-    few bp off ZKB's, so fallback changes are computed within the investing
-    series, never across the two sources."""
-    row = _empty_row(inst)
-    rate = (swap_rates or {}).get(inst["swap"])
-    if rate is None:
-        row["note"] = f"ZKB fetch failed ({inst['swap']})"
-        return row
-    bases = zkb.change_bases(swap_history or {}, inst["swap"])
-    inv = (invest_bases or {}).get(inst["swap"], {})
-    row["value"] = _fmt_value(rate, is_yield=True)
-    if bases["prev"] is not None:
-        row["chg_1d"] = _fmt_change(rate, bases["prev"], is_yield=True)
-    elif inv.get("prev") is not None:
-        row["chg_1d"] = _fmt_change(inv["last"], inv["prev"], is_yield=True)
-    if bases["ytd_base"] is not None:
-        row["chg_ytd"] = _fmt_change(rate, bases["ytd_base"], is_yield=True)
-    elif inv.get("ytd_base") is not None:
-        row["chg_ytd"] = _fmt_change(inv["last"], inv["ytd_base"], is_yield=True)
-    return row
-
-
 def _cbrate_row(inst, cb_rates) -> dict:
     row = _empty_row(inst)
     info = (cb_rates or {}).get(inst["bank"])
@@ -224,9 +197,7 @@ def _submit_all(executor) -> dict:
                 futures["fed_forecast"] = executor.submit(
                     _timed("fed forecast", investing.fed_rate_forecast)
                 )
-            if source == "zkb" and "zkb" not in futures:
-                futures["zkb"] = executor.submit(_timed("zkb", zkb.swap_rates))
-            elif source == "fred":
+            if source == "fred":
                 key = ("fred", inst["series"])
                 if key not in futures:
                     futures[key] = executor.submit(
@@ -264,26 +235,6 @@ def fetch_snapshot() -> dict:
     multi = isinstance(yahoo_data.columns, pd.MultiIndex)
     current_year = datetime.now().year
 
-    swap_rates = results.get("zkb")
-    swap_history = None
-    if swap_rates is not None and not isinstance(swap_rates, Exception):
-        try:
-            swap_history = zkb.update_history(swap_rates)
-        except Exception:
-            swap_history = None
-    else:
-        swap_rates = None
-
-    # non-blocking: returns the last completed daily fetch and refreshes
-    # in its own background thread when that fetch is stale
-    swap_pair_ids = {
-        inst["swap"]: inst["pair_id"]
-        for instruments in config.ASSET_CLASSES.values()
-        for inst in instruments
-        if inst.get("source") == "zkb" and inst.get("pair_id")
-    }
-    invest_bases = investing.swap_bases(swap_pair_ids) if swap_pair_ids else {}
-
     cb_rates = results.get("cbrate")
     if isinstance(cb_rates, Exception):
         cb_rates = None
@@ -297,9 +248,7 @@ def fetch_snapshot() -> dict:
         rows = []
         for inst in instruments:
             source = inst.get("source", "yahoo")
-            if source == "zkb":
-                rows.append(_zkb_row(inst, swap_rates, swap_history, invest_bases))
-            elif source == "cbrate":
+            if source == "cbrate":
                 rows.append(_cbrate_row(inst, cb_rates))
             elif source == "fred":
                 # published T+2 -> only flag as stale beyond the normal lag
