@@ -5,6 +5,7 @@ central-bank scrape) are independent, so they are fetched in parallel - the
 snapshot takes about as long as the slowest single source instead of the sum.
 """
 
+import math
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timezone
@@ -50,7 +51,9 @@ def _fmt_value(value: float, is_yield: bool, decimals=None) -> str:
 
 
 def _fmt_change(last, base, is_yield: bool) -> dict:
-    if base is None:
+    # a price change needs a non-zero base to divide by; a yield change is a
+    # plain difference, so a 0.00% base is fine there
+    if base is None or (not is_yield and not base):
         return {"text": "–", "cls": "flat"}
     if is_yield:
         bp = (last - base) * 100
@@ -78,40 +81,91 @@ def _age_days(asof) -> int:
     return (date.today() - asof).days
 
 
+def _number(value):
+    """float(value), or None when there is no usable number - fast_info
+    returns NaN for fields it has no value for, and a NaN would silently
+    poison every change computed from it."""
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if math.isnan(value) else value
+
+
 def _live_quote(ticker: str):
-    """Yahoo's bulk download sometimes has no close for the latest session
-    (thin names like LEON.SW get a NaN row); fast_info still carries the
-    real last trade and previous close."""
+    """Last trade and previous close straight from Yahoo's quote endpoint,
+    for the sessions the bulk download does not cover (see _yahoo_row).
+
+    regularMarketPreviousClose is the official close of the previous
+    session, the same convention as the daily bars, so switching between the
+    two sources does not move the number. fast_info's previousClose comes
+    from intraday bars and includes post-market trading (NVDA: 208.80
+    instead of the 208.48 regular close), so it only serves as the fallback
+    for thin names where Yahoo publishes no regular previous close at all
+    (LEON.SW)."""
     try:
         info = yf.Ticker(ticker).fast_info
-        last, prev = info.get("lastPrice"), info.get("previousClose")
-        if last is not None and prev is not None:
-            return float(last), float(prev)
+        last = _number(info.get("lastPrice"))
+        prev = _number(info.get("regularMarketPreviousClose"))
+        if prev is None:
+            prev = _number(info.get("previousClose"))
     except Exception:
-        pass
-    return None
+        return None
+    if last is None or prev is None:
+        return None
+    return last, prev
 
 
-def _yahoo_row(inst, data, multi, current_year) -> dict:
+def _sessions(data: pd.DataFrame, multi: bool) -> pd.DatetimeIndex:
+    """The dates in the downloaded panel that are real trading sessions.
+
+    The bulk frame holds one row per date *any* ticker traded, so with
+    crypto in the universe every Saturday and Sunday is a row as well, and
+    every market that was closed gets a NaN in it. Counting how many tickers
+    actually have a close tells the two apart: a real session is a day most
+    of the universe traded, a weekend row only ever carries the crypto
+    names."""
+    if data.empty:
+        return pd.DatetimeIndex([])
+    closes = data.xs("Close", axis=1, level=1) if multi else data[["Close"]]
+    traded = closes.notna().sum(axis=1)
+    return traded.index[traded >= max(1, traded.max() / 2)]
+
+
+def _yahoo_row(inst, data, multi, current_year, sessions) -> dict:
     row = _empty_row(inst)
     scale = inst.get("scale", 1)
     closes = _closes_for(data, inst["ticker"], multi) * scale
-    if len(closes) >= 2:
-        is_yield = inst["type"] == "yield"
-        last, prev = closes.iloc[-1], closes.iloc[-2]
-        if closes.index[-1] < data.index.max():
-            live = _live_quote(inst["ticker"])
-            if live:
-                last, prev = live[0] * scale, live[1] * scale
-            else:
-                row["asof"] = f"as of {closes.index[-1]:%Y-%m-%d}"
-        prior_year = closes[closes.index.year < current_year]
-        ytd_base = prior_year.iloc[-1] if len(prior_year) else closes.iloc[0]
-        row["value"] = _fmt_value(last, is_yield, inst.get("decimals"))
-        row["chg_1d"] = _fmt_change(last, prev, is_yield)
-        row["chg_ytd"] = _fmt_change(last, ytd_base, is_yield)
-    elif not row["note"]:
-        row["note"] = f"no data returned for {inst['ticker']}"
+    if len(closes) < 2:
+        if not row["note"]:
+            row["note"] = f"no data returned for {inst['ticker']}"
+        return row
+    is_yield = inst["type"] == "yield"
+    last, prev = closes.iloc[-1], closes.iloc[-2]
+    last_day, prev_day = closes.index[-1], closes.index[-2]
+    # A ticker's daily bars are not necessarily a gapless series: it can lag
+    # the newest session (no close published yet), and thin names are missing
+    # whole sessions outright - Yahoo has no 25 Aug bar for LEON.SW at all,
+    # which turns the "previous" close into the one from 24 Aug and reports
+    # a two-session -5.31% as the 1d change instead of -0.97%. Either way the
+    # live quote is the only source for a true one-session change.
+    lagging = len(sessions) > 0 and last_day < sessions[-1]
+    skipped = bool(((sessions > prev_day) & (sessions < last_day)).any())
+    if lagging or skipped:
+        live = _live_quote(inst["ticker"])
+        if live:
+            last, prev = live[0] * scale, live[1] * scale
+        elif lagging:
+            row["asof"] = f"as of {last_day:%Y-%m-%d}"
+        else:
+            # no live quote to repair the hole: show what the change is
+            # actually measured against rather than passing it off as 1d
+            row["asof"] = f"1d vs {prev_day:%Y-%m-%d}"
+    prior_year = closes[closes.index.year < current_year]
+    ytd_base = prior_year.iloc[-1] if len(prior_year) else closes.iloc[0]
+    row["value"] = _fmt_value(last, is_yield, inst.get("decimals"))
+    row["chg_1d"] = _fmt_change(last, prev, is_yield)
+    row["chg_ytd"] = _fmt_change(last, ytd_base, is_yield)
     return row
 
 
@@ -233,6 +287,7 @@ def fetch_snapshot() -> dict:
     if isinstance(yahoo_data, Exception):
         yahoo_data = pd.DataFrame()
     multi = isinstance(yahoo_data.columns, pd.MultiIndex)
+    sessions = _sessions(yahoo_data, multi)
     current_year = datetime.now().year
 
     cb_rates = results.get("cbrate")
@@ -269,7 +324,7 @@ def fetch_snapshot() -> dict:
             elif source == "investing":
                 rows.append(_quote_row(inst, results[("investing", inst["pair_id"])]))
             else:
-                rows.append(_yahoo_row(inst, yahoo_data, multi, current_year))
+                rows.append(_yahoo_row(inst, yahoo_data, multi, current_year, sessions))
         classes[class_name] = rows
 
     return {
