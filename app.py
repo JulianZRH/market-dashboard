@@ -24,6 +24,8 @@ app = Flask(__name__)
 
 _SNAPSHOT_FILE = Path(__file__).resolve().parent / "data" / "last_snapshot.json"
 
+_CRASH_LOG = _SNAPSHOT_FILE.parent / "crash.log"
+
 _state = {"snapshot": None, "error": None}
 
 
@@ -44,6 +46,19 @@ def _apply_wallpaper():
         print("[wallpaper] desktop background updated")
     except Exception:
         print(f"[wallpaper] FAILED:\n{traceback.format_exc(limit=1)}")
+
+
+def _log_crash():
+    """Appends the current exception to data/crash.log. Wallpaper mode runs
+    under pythonw without a console, so without this the process just
+    vanishes and leaves nothing to diagnose."""
+    try:
+        _CRASH_LOG.parent.mkdir(exist_ok=True)
+        with _CRASH_LOG.open("a", encoding="utf-8") as f:
+            f.write(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n"
+                    f"{traceback.format_exc()}\n")
+    except Exception:
+        pass
 
 
 def _refresh_loop(to_wallpaper=False):
@@ -97,7 +112,11 @@ if __name__ == "__main__":
         _load_saved_snapshot()
         if _state["snapshot"]:
             _apply_wallpaper()
-        _refresh_loop(to_wallpaper=True)
+        try:
+            _refresh_loop(to_wallpaper=True)
+        except BaseException:
+            _log_crash()
+            raise
     else:
         url = f"http://localhost:{config.PORT}"
         open_browser = "--no-browser" not in sys.argv

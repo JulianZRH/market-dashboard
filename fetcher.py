@@ -19,6 +19,40 @@ import investing
 import westmetall
 
 
+# Both pools live for the whole process on purpose. curl_cffi keeps its curl
+# handles per thread and never frees them when the thread ends, so anything
+# that spawns fresh threads every refresh leaks OS handles and memory - at one
+# refresh a minute that killed the wallpaper process after about ten days.
+# Long-lived worker threads reuse their handles instead.
+_SOURCE_POOL = ThreadPoolExecutor(max_workers=10, thread_name_prefix="source")
+_YAHOO_WORKERS = 8
+_YAHOO_POOL = ThreadPoolExecutor(max_workers=_YAHOO_WORKERS, thread_name_prefix="yahoo")
+
+
+def _yahoo_download(tickers) -> pd.DataFrame:
+    """yf.download for the whole universe, split across _YAHOO_POOL.
+
+    yfinance's own threads=True starts one new thread per ticker on every
+    call (the leak described above), so each chunk is downloaded
+    single-threaded on a pooled thread and the frames are joined back into
+    the same (ticker, field) column layout."""
+    chunks = [tickers[i::_YAHOO_WORKERS] for i in range(_YAHOO_WORKERS)]
+    frames = list(_YAHOO_POOL.map(
+        lambda chunk: yf.download(
+            chunk,
+            period="1y",
+            interval="1d",
+            group_by="ticker",
+            auto_adjust=False,
+            threads=False,
+            progress=False,
+        ),
+        [chunk for chunk in chunks if chunk],
+    ))
+    frames = [f for f in frames if not f.empty]
+    return pd.concat(frames, axis=1).sort_index() if frames else pd.DataFrame()
+
+
 def _yahoo_tickers():
     return [
         inst["ticker"]
@@ -225,17 +259,7 @@ def _submit_all(executor) -> dict:
     """Kicks off every source fetch in parallel. Returns {key: future}."""
     futures = {
         "yahoo": executor.submit(
-            _timed(
-                "yahoo",
-                yf.download,
-                _yahoo_tickers(),
-                period="1y",
-                interval="1d",
-                group_by="ticker",
-                auto_adjust=False,
-                threads=True,
-                progress=False,
-            )
+            _timed("yahoo", _yahoo_download, _yahoo_tickers())
         )
     }
     for instruments in config.ASSET_CLASSES.values():
@@ -274,14 +298,13 @@ def _submit_all(executor) -> dict:
 
 def fetch_snapshot() -> dict:
     """Returns {"classes": {class_name: [row, ...]}, "updated": str}."""
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = _submit_all(executor)
-        results = {}
-        for key, future in futures.items():
-            try:
-                results[key] = future.result(timeout=120)
-            except Exception as exc:
-                results[key] = exc
+    futures = _submit_all(_SOURCE_POOL)
+    results = {}
+    for key, future in futures.items():
+        try:
+            results[key] = future.result(timeout=120)
+        except Exception as exc:
+            results[key] = exc
 
     yahoo_data = results["yahoo"]
     if isinstance(yahoo_data, Exception):
