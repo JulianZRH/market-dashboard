@@ -57,6 +57,14 @@ Two ways to run it — both refresh every `REFRESH_MINUTES` (default 1 min):
   - Alternative without a running console: `app.py --wallpaper-once`
     fetches once, repaints the wallpaper and exits — suitable for a
     recurring Windows Task Scheduler job.
+  - Autostart: the Task Scheduler task "Market Dashboard Wallpaper" runs
+    `.venv\Scripts\pythonw.exe app.py --wallpaper` (working dir = repo,
+    "run only when user is logged on", no time limit, "if already running:
+    do not start a new instance"). It has two triggers: at logon (30 s
+    delay) and a watchdog every 5 minutes. The watchdog is a no-op while
+    the process runs, and restarts it within 5 minutes if something kills
+    it from outside (e.g. Windows Restart Manager during an Office update).
+    Fatal Python errors are appended to `data\crash.log`.
 
 On first run either launcher creates a `.venv` and installs the
 requirements automatically; afterwards they start instantly.
