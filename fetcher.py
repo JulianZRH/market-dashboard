@@ -227,19 +227,46 @@ def _quote_row(inst, result, stale_days=None) -> dict:
     return row
 
 
-def _cbrate_row(inst, cb_rates) -> dict:
+def _parse_meeting(text):
+    """date from investing.com's meeting style ("Dec 09, 2026"), or None."""
+    try:
+        return datetime.strptime(text.strip(), "%b %d, %Y").date()
+    except (AttributeError, ValueError):
+        return None
+
+
+def _next_meeting(bank, cb_rates, fed_forecast):
+    """The bank's next policy decision that is not yet past, or None. The
+    day itself still counts: the announcement may not be out yet.
+
+    Candidates are the official calendar in config plus whatever
+    investing.com currently names. A source that has gone stale still names
+    the meeting that just happened, so dropping past dates and taking the
+    earliest of the rest gives the right one."""
+    today = date.today()
+    candidates = [date.fromisoformat(d) for d in config.CB_MEETINGS.get(bank, [])]
+    info = (cb_rates or {}).get(bank)
+    if info:
+        candidates.append(_parse_meeting(info["next"]))
+    if bank == "FED" and fed_forecast:
+        candidates.append(_parse_meeting(fed_forecast["date"]))
+    ahead = [d for d in candidates if d and d >= today]
+    return min(ahead) if ahead else None
+
+
+def _cbrate_row(inst, cb_rates, meeting) -> dict:
     row = _empty_row(inst)
     info = (cb_rates or {}).get(inst["bank"])
     if not info:
         row["note"] = f"central-bank scrape failed ({inst['bank']})"
         return row
     row["value"] = _fmt_value(info["rate"], is_yield=True)
-    row["next"] = info["next"]
+    row["next"] = f"{meeting:%b %d, %Y}" if meeting else ""
     parts = []
     if info["last_change"]:
         parts.append(f"last change {info['last_change']}")
-    if info["next"]:
-        parts.append(f"next {info['next']}")
+    if row["next"]:
+        parts.append(f"next {row['next']}")
     row["note"] = " · ".join(parts)
     return row
 
@@ -327,14 +354,18 @@ def fetch_snapshot() -> dict:
         for inst in instruments:
             source = inst.get("source", "yahoo")
             if source == "cbrate":
-                rows.append(_cbrate_row(inst, cb_rates))
+                meeting = _next_meeting(inst["bank"], cb_rates, fed_forecast)
+                rows.append(_cbrate_row(inst, cb_rates, meeting))
             elif source == "fred":
                 # published T+2 -> only flag as stale beyond the normal lag
                 row = _quote_row(inst, results[("fred", inst["series"])], stale_days=5)
-                bank = (cb_rates or {}).get(inst.get("bank"))
-                if bank and bank["next"]:
-                    nxt = bank["next"]
-                    if inst.get("bank") == "FED" and fed_forecast:
+                meeting = _next_meeting(inst.get("bank"), cb_rates, fed_forecast)
+                if meeting:
+                    nxt = f"{meeting:%b %d, %Y}"
+                    # the futures-implied odds only belong next to the date
+                    # if they are priced for that very meeting
+                    if (inst.get("bank") == "FED" and fed_forecast
+                            and _parse_meeting(fed_forecast["date"]) == meeting):
                         nxt += (f" · {fed_forecast['range']}% expected"
                                 f" ({fed_forecast['prob']:.0f}%)")
                     row["next"] = nxt

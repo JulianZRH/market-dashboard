@@ -106,6 +106,10 @@ instrument universe. Add or remove instruments by editing the
 - **Policy rates** are scraped from
   [investing.com/central-banks](https://www.investing.com/central-banks/)
   (cached for 12h; the row note shows the last change and next meeting).
+  investing.com is slow to roll the next-meeting date over after a
+  meeting, so the dashboard also checks the official Fed / ECB / SNB
+  calendars in `config.CB_MEETINGS` and never shows a date that has
+  passed. Add the next year's dates there once they are published.
   This is the only remaining investing.com dependency — the slow
   per-instrument chart API (`investing.py`) is no longer used, but kept
   in the repo in case single-instrument quotes are needed again.

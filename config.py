@@ -35,6 +35,19 @@ WALLPAPER_OTHERS = "black"  # non-target monitors: "black" or "keep" their wallp
 # are packed into whichever column is currently shortest
 WALLPAPER_STACK = {"Equity Single": "Equity Index", "Credit HY": "Credit IG"}
 
+# Scheduled policy decisions (the last day of each meeting), from the official
+# calendars at federalreserve.gov, ecb.europa.eu and snb.ch. investing.com is
+# slow to roll its "next meeting" over once a meeting has happened (a week
+# after the 28 Oct FOMC it still listed Oct 28), so the row shows the first
+# date from here or from the scrape that is not yet past. Extend once a year.
+CB_MEETINGS = {
+    "FED": ["2026-12-09", "2027-01-27", "2027-03-17", "2027-04-28", "2027-06-09",
+            "2027-07-28", "2027-09-15", "2027-10-27", "2027-12-08"],
+    "ECB": ["2026-12-17", "2027-02-04", "2027-03-18", "2027-04-29", "2027-06-10",
+            "2027-07-22", "2027-09-09", "2027-10-28", "2027-12-16"],
+    "SNB": ["2026-12-10", "2027-03-18", "2027-06-24", "2027-09-23", "2027-12-16"],
+}
+
 ASSET_CLASSES = {
     "Equity Index": [
         {"name": "World (VT)",    "ticker": "VT",        "ccy": "USD", "type": "price",
