@@ -60,6 +60,8 @@ ASSET_CLASSES = {
         {"name": "DAX",           "ticker": "^GDAXI",    "ccy": "EUR", "type": "price"},
         {"name": "FTSE 100",      "ticker": "^FTSE",     "ccy": "GBP", "type": "price"},
         {"name": "Hang Seng",     "ticker": "^HSI",      "ccy": "HKD", "type": "price"},
+        {"name": "VIX",           "ticker": "^VIX",      "ccy": "USD", "type": "price",
+         "note": "CBOE S&P 500 Volatility Index"},
     ],
     "Equity Single": [
         {"name": "Leonteq",       "ticker": "LEON.SW",   "ccy": "CHF", "type": "price",

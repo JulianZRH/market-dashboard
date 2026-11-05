@@ -7,7 +7,7 @@ desktop wallpaper, segregated into asset classes:
 
 | Asset class | Contents | Source |
 |---|---|---|
-| **Equity** | S&P 500, Nasdaq 100, Euro Stoxx 50, DAX, SMI, FTSE 100, CAC 40, Nikkei 225, Hang Seng, VT (Vanguard Total World ETF), Leonteq | Yahoo Finance |
+| **Equity** | S&P 500, Nasdaq 100, Euro Stoxx 50, DAX, SMI, FTSE 100, CAC 40, Nikkei 225, Hang Seng, VIX, VT (Vanguard Total World ETF), Leonteq | Yahoo Finance |
 | **Rates** | Effective Federal Funds Rate (FRED), ECB / SNB policy rates, interest rate swaps 2y / 3y / 5y / 10y in USD, EUR, CHF | FRED + investing.com + ZKB |
 | **Precious Metals** | Gold, Silver, Palladium, Platinum | Yahoo Finance |
 | **Energy** | WTI, Brent, Nat Gas | Yahoo Finance |
