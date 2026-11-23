@@ -17,6 +17,8 @@ Instrument fields:
     pair_id     investing.com numeric pair id   (source "investing")
     scale       optional multiplier applied to the raw quote (default 1)
     decimals    optional number of decimals for the Last column
+    chg_1d      optional "points": show the 1d change as an absolute move
+                (e.g. vol points for VIX) instead of a percentage
     note        small-print remark shown under the instrument name
 
 Swap rates come from investing.com's IRS instruments (source "investing"),
@@ -61,7 +63,7 @@ ASSET_CLASSES = {
         {"name": "FTSE 100",      "ticker": "^FTSE",     "ccy": "GBP", "type": "price"},
         {"name": "Hang Seng",     "ticker": "^HSI",      "ccy": "HKD", "type": "price"},
         {"name": "VIX",           "ticker": "^VIX",      "ccy": "USD", "type": "price",
-         "note": "CBOE S&P 500 Volatility Index"},
+         "note": "CBOE S&P 500 Volatility Index", "chg_1d": "points"},
     ],
     "Equity Single": [
         {"name": "Leonteq",       "ticker": "LEON.SW",   "ccy": "CHF", "type": "price",
@@ -71,6 +73,8 @@ ASSET_CLASSES = {
         {"name": "NVIDIA",        "ticker": "NVDA",      "ccy": "USD", "type": "price"},
         {"name": "Rheinmetall",   "ticker": "RHM.DE",    "ccy": "EUR", "type": "price"},
         {"name": "Take-Two Interactive", "ticker": "TTWO", "ccy": "USD", "type": "price"},
+        {"name": "Anthropic",     "ticker": "ANT",       "ccy": "USD", "type": "price",
+         "note": "Anthropic, PBC (Nasdaq)"},
     ],
     # Central-bank policy rates (investing.com/central-banks/, 12h cache)
     # plus interest rate swaps from investing.com's IRS instruments.

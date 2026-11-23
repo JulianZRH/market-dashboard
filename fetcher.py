@@ -84,7 +84,7 @@ def _fmt_value(value: float, is_yield: bool, decimals=None) -> str:
     return f"{value:,.2f}"
 
 
-def _fmt_change(last, base, is_yield: bool) -> dict:
+def _fmt_change(last, base, is_yield: bool, points: bool = False) -> dict:
     # a price change needs a non-zero base to divide by; a yield change is a
     # plain difference, so a 0.00% base is fine there
     if base is None or (not is_yield and not base):
@@ -92,6 +92,10 @@ def _fmt_change(last, base, is_yield: bool) -> dict:
     if is_yield:
         bp = (last - base) * 100
         return {"text": f"{bp:+.1f} bp", "cls": "pos" if bp >= 0 else "neg"}
+    if points:
+        # absolute move in the instrument's own units, e.g. vol points for VIX
+        pts = last - base
+        return {"text": f"{pts:+.2f} pts", "cls": "pos" if pts >= 0 else "neg"}
     pct = (last / base - 1) * 100
     return {"text": f"{pct:+.2f}%", "cls": "pos" if pct >= 0 else "neg"}
 
@@ -198,7 +202,7 @@ def _yahoo_row(inst, data, multi, current_year, sessions) -> dict:
     prior_year = closes[closes.index.year < current_year]
     ytd_base = prior_year.iloc[-1] if len(prior_year) else closes.iloc[0]
     row["value"] = _fmt_value(last, is_yield, inst.get("decimals"))
-    row["chg_1d"] = _fmt_change(last, prev, is_yield)
+    row["chg_1d"] = _fmt_change(last, prev, is_yield, inst.get("chg_1d") == "points")
     row["chg_ytd"] = _fmt_change(last, ytd_base, is_yield)
     return row
 
@@ -219,7 +223,7 @@ def _quote_row(inst, result, stale_days=None) -> dict:
     prev = result["prev"] * scale if result["prev"] is not None else None
     ytd_base = result["ytd_base"] * scale if result["ytd_base"] is not None else None
     row["value"] = _fmt_value(last, is_yield, inst.get("decimals"))
-    row["chg_1d"] = _fmt_change(last, prev, is_yield)
+    row["chg_1d"] = _fmt_change(last, prev, is_yield, inst.get("chg_1d") == "points")
     row["chg_ytd"] = _fmt_change(last, ytd_base, is_yield)
     threshold = stale_days if stale_days is not None else config.STALE_AFTER_DAYS
     if result.get("asof") is not None and _age_days(result["asof"]) >= threshold:
