@@ -7,7 +7,9 @@ Two modes, both refreshing every config.REFRESH_MINUTES minutes:
 """
 
 import json
+import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -93,6 +95,37 @@ def index():
     )
 
 
+def _stop_other_wallpaper_instances():
+    """End any other `app.py --wallpaper` process. Two instances repaint the
+    desktop in turn, so an old one still running old code (e.g. the autostart
+    task's, when start_wallpaper.bat is run by hand after an update) keeps
+    overwriting the new layout. The newest start always wins."""
+    ps = ("Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" | "
+          "Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json")
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+            capture_output=True, text=True, timeout=30,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        ).stdout
+        procs = json.loads(out) if out.strip() else []
+    except Exception as e:
+        print(f"could not check for other wallpaper instances: {e}")
+        return
+    if isinstance(procs, dict):
+        procs = [procs]
+    # our own process and the .venv launcher that spawned us
+    mine = {os.getpid(), os.getppid()}
+    for p in procs:
+        cmd = (p.get("CommandLine") or "").strip()
+        if p["ProcessId"] in mine or "app.py" not in cmd                 or not cmd.endswith("--wallpaper"):
+            continue
+        print(f"stopping older wallpaper instance (pid {p['ProcessId']})")
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(p["ProcessId"])],
+                       capture_output=True,
+                       creationflags=subprocess.CREATE_NO_WINDOW)
+
+
 def _port_in_use(port: int) -> bool:
     with socket.socket() as s:
         return s.connect_ex(("127.0.0.1", port)) == 0
@@ -109,6 +142,7 @@ if __name__ == "__main__":
         # wallpaper mode: no server, no browser - just refresh + repaint
         print("Market Overview in wallpaper mode "
               f"(desktop background, refresh every {config.REFRESH_MINUTES} min)")
+        _stop_other_wallpaper_instances()
         _load_saved_snapshot()
         if _state["snapshot"]:
             _apply_wallpaper()

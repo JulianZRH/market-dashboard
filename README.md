@@ -65,6 +65,9 @@ Two ways to run it — both refresh every `REFRESH_MINUTES` (default 1 min):
     the process runs, and restarts it within 5 minutes if something kills
     it from outside (e.g. Windows Restart Manager during an Office update).
     Fatal Python errors are appended to `data\crash.log`.
+  - Only one wallpaper instance runs at a time: a newly started
+    `app.py --wallpaper` (task or `start_wallpaper.bat`) ends any other
+    one first, so restarting after a code update always takes effect.
 
 On first run either launcher creates a `.venv` and installs the
 requirements automatically; afterwards they start instantly.
